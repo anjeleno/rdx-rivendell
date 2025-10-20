@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  RDX JACK Profiles Configuration
+  
+  This file defines audio profiles for different broadcast scenarios.
+  Each profile contains device settings, connection routing, and
+  service configurations for complete audio workflow management.
+-->
+<rdx-jack-profiles version="1.0">
+  
+  <!-- Live Broadcast Profile -->
+  <profile name="live-broadcast" auto-activate="true">
+    <description>Live on-air broadcasting setup with processing chain</description>
+    
+    <jack-settings>
+      <sample-rate>48000</sample-rate>
+      <buffer-size>512</buffer-size>
+      <periods>3</periods>
+    </jack-settings>
+    
+    <!-- Audio routing connections -->
+    <connections>
+      <!-- Rivendell main outputs to Stereo Tool processing -->
+      <connection source="rivendell_0:playout_0L" dest="stereo_tool_gui_jack_64_1030:in_1"/>
+      <connection source="rivendell_0:playout_0R" dest="stereo_tool_gui_jack_64_1030:in_2"/>
+      
+      <!-- Processed audio to Liquidsoap for streaming -->
+      <connection source="stereo_tool_gui_jack_64_1030:out_l" dest="liquidsoap:in_0"/>
+      <connection source="stereo_tool_gui_jack_64_1030:out_r" dest="liquidsoap:in_1"/>
+      
+      <!-- Monitor outputs to system playback -->
+      <connection source="stereo_tool_gui_jack_64_1030:fm_l" dest="system:playback_1"/>
+      <connection source="stereo_tool_gui_jack_64_1030:fm_r" dest="system:playback_2"/>
+      
+      <!-- VLC capture routing (dynamic client name support) -->
+      <connection source="vlc_*:vlc_*_out_1" dest="rivendell_0:record_0L"/>
+      <connection source="vlc_*:vlc_*_out_2" dest="rivendell_0:record_0R"/>
+      
+      <!-- Live microphone input (for when VLC isn't used) -->
+      <connection source="system:capture_1" dest="rivendell_0:record_1L"/>
+      <connection source="system:capture_2" dest="rivendell_0:record_1R"/>
+    </connections>
+    
+    <!-- Services to auto-start -->
+    <auto-clients>
+      <client>stereo_tool_gui_jack_64_1030</client>
+      <client>liquidsoap</client>
+    </auto-clients>
+    
+    <!-- External services -->
+    <services>
+      <service name="icecast2" enabled="true"/>
+      <service name="liquidsoap" script="/home/rd/radio.liq"/>
+    </services>
+  </profile>
+  
+  <!-- Production Profile -->
+  <profile name="production">
+    <description>Multi-track production and content creation</description>
+    
+    <jack-settings>
+      <sample-rate>48000</sample-rate>
+      <buffer-size>256</buffer-size>
+      <periods>2</periods>
+    </jack-settings>
+    
+    <connections>
+      <!-- Direct monitoring without processing -->
+      <connection source="rivendell_0:playout_0L" dest="system:playback_1"/>
+      <connection source="rivendell_0:playout_0R" dest="system:playback_2"/>
+      
+      <!-- Multiple recording inputs -->
+      <connection source="system:capture_1" dest="rivendell_0:record_0L"/>
+      <connection source="system:capture_2" dest="rivendell_0:record_0R"/>
+      <connection source="system:capture_3" dest="rivendell_0:record_1L"/>
+      <connection source="system:capture_4" dest="rivendell_0:record_1R"/>
+    </connections>
+    
+    <auto-clients>
+      <!-- No external processing for production -->
+    </auto-clients>
+    
+    <services>
+      <service name="icecast2" enabled="false"/>
+    </services>
+  </profile>
+  
+  <!-- Automation Profile -->
+  <profile name="automation">
+    <description>Unattended automation with minimal monitoring</description>
+    
+    <jack-settings>
+      <sample-rate>48000</sample-rate>
+      <buffer-size>1024</buffer-size>
+      <periods>4</periods>
+    </jack-settings>
+    
+    <connections>
+      <!-- Simple automation chain -->
+      <connection source="rivendell_0:playout_0L" dest="stereo_tool_gui_jack_64_1030:in_1"/>
+      <connection source="rivendell_0:playout_0R" dest="stereo_tool_gui_jack_64_1030:in_2"/>
+      <connection source="stereo_tool_gui_jack_64_1030:out_l" dest="liquidsoap:in_0"/>
+      <connection source="stereo_tool_gui_jack_64_1030:out_r" dest="liquidsoap:in_1"/>
+    </connections>
+    
+    <auto-clients>
+      <client>stereo_tool_gui_jack_64_1030</client>
+      <client>liquidsoap</client>
+    </auto-clients>
+    
+    <services>
+      <service name="icecast2" enabled="true"/>
+      <service name="liquidsoap" script="/home/rd/radio.liq"/>
+    </services>
+  </profile>
+
+</rdx-jack-profiles>

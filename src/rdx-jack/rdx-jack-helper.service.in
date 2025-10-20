@@ -1,0 +1,23 @@
+[Unit]
+Description=RDX JACK Helper Service
+After=network.target sound.target
+Wants=network.target sound.target
+
+[Service]
+Type=simple
+User=rd
+Group=audio
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/rdx-jack-helper
+Restart=on-failure
+RestartSec=5
+Environment="JACK_PROMISCUOUS_SERVER=audio"
+Environment="JACK_NO_AUDIO_RESERVATION=1"
+
+# Allow access to audio devices
+SupplementaryGroups=audio
+
+# D-Bus permissions
+BusName=org.rdx.jack
+
+[Install]
+WantedBy=multi-user.target
