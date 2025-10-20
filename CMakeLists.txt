@@ -55,8 +55,8 @@ add_definitions(-DJACK)
 # RDX JACK Helper Service
 add_subdirectory(src/rdx-jack)
 
-# RDX Admin Plugin
-add_subdirectory(src/rdx-admin)
+# RDX GUI Components (RDAdmin Integration)
+add_subdirectory(src/rdx-gui)
 
 # Install configuration files
 install(FILES config/rdx-profiles.xml DESTINATION /etc/rdx)
