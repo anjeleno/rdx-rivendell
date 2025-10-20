@@ -1,0 +1,67 @@
+# RDX Development Documentation (exclude from repository)
+rivendell-v4-fork-blueprint.md
+upgrade-path-decisions.md
+V4-audit.md
+
+# Temporary: Will add back as clean copies
+rivendell-installer/
+rivendell-v4/
+
+# Build artifacts
+*.o
+*.so
+*.a
+build/
+dist/
+.deps/
+.libs/
+
+# Qt build files
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.moc
+Makefile
+*.pro.user*
+
+# Autotools generated files
+configure
+config.log
+config.status
+autom4te.cache/
+aclocal.m4
+install-sh
+missing
+depcomp
+compile
+config.guess
+config.sub
+ltmain.sh
+libtool
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Debian packaging
+debian/files
+debian/*.debhelper
+debian/*.log
+debian/tmp/
+debian/.debhelper/
+
+# Testing and temporary files
+*.tmp
+*.test
+test_*
+.pytest_cache/
+
+# Logs
+*.log
+
+# Local configuration
+.env
+local.conf
