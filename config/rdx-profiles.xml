@@ -5,6 +5,16 @@
   This file defines audio profiles for different broadcast scenarios.
   Each profile contains device settings, connection routing, and
   service configurations for complete audio workflow management.
+  
+  SMART ROUTING BEHAVIOR:
+  - auto-activate="true": Profile will auto-select best available input source
+  - auto-activate="false": Manual input selection required (--switch-input)
+  
+  INTELLIGENT AUTO-CONNECTION RULES:
+  - VLC appears → Auto-routes to Rivendell (intentional media playback)  
+  - Physical inputs → Respects user/preset control (avoid conflicts)
+  - Stereo Tool → Prevents auto-capture routing (processing, not input)
+  - Unknown clients → Monitoring only, no auto-connection
 -->
 <rdx-jack-profiles version="1.0">
   
@@ -17,6 +27,28 @@
       <buffer-size>512</buffer-size>
       <periods>3</periods>
     </jack-settings>
+    
+    <!-- User-Defined Critical Connections (NEVER auto-disconnect these) -->
+    <critical-connections>
+      <!-- Processing Chain: Rivendell → Audio Processor -->
+      <connection source="rivendell_0:playout_0L" dest="*stereo_tool*:*in*1*" type="processing" priority="critical"/>
+      <connection source="rivendell_0:playout_0R" dest="*stereo_tool*:*in*2*" type="processing" priority="critical"/>
+      
+      <!-- Processing Chain: Audio Processor → Streaming -->  
+      <connection source="*stereo_tool*:*out*l*" dest="*liquidsoap*:*in*0*" type="streaming" priority="critical"/>
+      <connection source="*stereo_tool*:*out*r*" dest="*liquidsoap*:*in*1*" type="streaming" priority="critical"/>
+      
+      <!-- Monitor Outputs (user can customize) -->
+      <connection source="rivendell_0:playout_0L" dest="system:playback_1" type="monitor" priority="important"/>
+      <connection source="rivendell_0:playout_0R" dest="system:playback_2" type="monitor" priority="important"/>
+    </critical-connections>
+    
+    <!-- Auto-Detection Rules (smart hardware discovery) -->
+    <auto-detect>
+      <processor-types>stereo_tool, jack_rack, carla, non_mixer</processor-types>
+      <streaming-types>liquidsoap, GlassCoder, darkice, butt, icecast</streaming-types>
+      <input-sources>vlc, system:capture, hydrogen, rosegarden</input-sources>
+    </auto-detect>
     
     <!-- Audio routing connections -->
     <connections>
@@ -55,7 +87,7 @@
   </profile>
   
   <!-- Production Profile -->
-  <profile name="production">
+  <profile name="production" auto-activate="true">
     <description>Multi-track production and content creation</description>
     
     <jack-settings>
@@ -86,7 +118,7 @@
   </profile>
   
   <!-- Automation Profile -->
-  <profile name="automation">
+  <profile name="automation" auto-activate="true">
     <description>Unattended automation with minimal monitoring</description>
     
     <jack-settings>
