@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=STL
+Comment=
+Exec=/home/rd/imports/APPS/stl.sh
+Icon=transmission
+Path=
+Terminal=false
+StartupNotify=false

@@ -1,0 +1,43 @@
+Template: rivendell-installer/install-type
+Type: select
+Choices: Standalone, Server, Client
+Default: Standalone
+Description: Rivendell installation type:
+ Choose the Rivendell installation type. Standalone is recommended for most users.
+
+Template: rivendell-installer/hostname
+Type: string
+Default: onair
+Description: Hostname to set for the system:
+ Rivendell requires the Linux hostname to match its configured hostname.
+ Enter a value or leave as default "onair".
+
+Template: rivendell-installer/set-timezone
+Type: boolean
+Default: false
+Description: Do you want to set the timezone during install?
+ If enabled, tzdata will be configured interactively.
+
+Template: rivendell-installer/enable-ufw
+Type: boolean
+Default: false
+Description: Enable UFW firewall and open required ports?
+ You can later adjust rules with ufw.
+
+Template: rivendell-installer/harden-ssh
+Type: boolean
+Default: false
+Description: Harden SSH by disabling password authentication?
+ Ensure your SSH key login works before enabling this.
+
+Template: rivendell-installer/create-rd-user
+Type: boolean
+Default: false
+Description: Create the 'rd' user if running as root?
+ If false, the current sudo user will be used as the primary operator.
+
+Template: rivendell-installer/install-mate
+Type: boolean
+Default: false
+Description: Install MATE desktop environment?
+ Use only if your system lacks a desktop and you want MATE.

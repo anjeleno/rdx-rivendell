@@ -1,0 +1,74 @@
+<!DOCTYPE patchbay>
+<patchbay name="PROC-ON" version="0.9.6">
+ <output-sockets>
+  <socket name="system" exclusive="off" client="system" type="jack-audio">
+   <plug>capture_1</plug>
+   <plug>capture_2</plug>
+  </socket>
+  <socket name="rivendell_0" exclusive="off" client="rivendell_0" type="jack-audio">
+   <plug>playout_0L</plug>
+   <plug>playout_0R</plug>
+   <plug>playout_1L</plug>
+   <plug>playout_1R</plug>
+   <plug>playout_2L</plug>
+   <plug>playout_2R</plug>
+   <plug>playout_3L</plug>
+   <plug>playout_3R</plug>
+  </socket>
+  <socket name="stereo_tool_gui_jack_64_1030" exclusive="off" client="stereo_tool_gui_jack_64_[0-9]+" type="jack-audio">
+   <plug>fm_l</plug>
+   <plug>fm_r</plug>
+   <plug>out_l</plug>
+   <plug>out_r</plug>
+   <plug>low_l</plug>
+   <plug>low_r</plug>
+  </socket>
+  <socket name="vlc_37384" exclusive="off" client="vlc_[0-9]+" type="jack-audio">
+   <plug>vlc_[0-9]+_out_1</plug>
+   <plug>vlc_[0-9]+_out_2</plug>
+  </socket>
+  <socket name="stereo_tool_gui_jack_64_1030 2" exclusive="off" client="stereo_tool_gui_jack_64_[0-9]+" type="jack-audio">
+   <plug>out_l</plug>
+   <plug>out_r</plug>
+  </socket>
+  <socket name="Midi Through" exclusive="off" client="Midi\ Through" type="alsa-midi">
+   <plug>Midi\ Through\ Port\-0</plug>
+  </socket>
+ </output-sockets>
+ <input-sockets>
+  <socket name="system" exclusive="off" client="system" type="jack-audio">
+   <plug>playback_1</plug>
+   <plug>playback_2</plug>
+  </socket>
+  <socket name="rivendell_0" exclusive="off" client="rivendell_0" type="jack-audio">
+   <plug>record_0L</plug>
+   <plug>record_0R</plug>
+   <plug>record_1L</plug>
+   <plug>record_1R</plug>
+   <plug>record_2L</plug>
+   <plug>record_2R</plug>
+   <plug>record_3L</plug>
+   <plug>record_3R</plug>
+  </socket>
+  <socket name="liquidsoap" exclusive="off" client="liquidsoap" type="jack-audio">
+   <plug>in_0</plug>
+   <plug>in_1</plug>
+  </socket>
+  <socket name="stereo_tool_gui_jack_64_1030" exclusive="off" client="stereo_tool_gui_jack_64_[0-9]+" type="jack-audio">
+   <plug>in_1</plug>
+   <plug>in_2</plug>
+   <plug>in_3</plug>
+   <plug>in_4</plug>
+  </socket>
+  <socket name="Midi Through" exclusive="off" client="Midi\ Through" type="alsa-midi">
+   <plug>Midi\ Through\ Port\-0</plug>
+  </socket>
+ </input-sockets>
+ <slots/>
+ <cables>
+  <cable type="jack-audio" output="rivendell_0" input="stereo_tool_gui_jack_64_1030"/>
+  <cable type="jack-audio" output="vlc_37384" input="rivendell_0"/>
+  <cable type="jack-audio" output="stereo_tool_gui_jack_64_1030 2" input="liquidsoap"/>
+ </cables>
+</patchbay>
+

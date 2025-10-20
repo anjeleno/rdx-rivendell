@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|deconfigure)
+        # No-op: do not remove user data or alter services on uninstall
+        :
+        ;;
+esac
+
+exit 0

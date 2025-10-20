@@ -1,0 +1,5 @@
+rivendell-installer (0.1.0) unstable; urgency=medium
+
+  * Initial packaging skeleton with debconf templates and maintainer scripts.
+
+ -- Rivendell Cloud <maintainer@example.com>  Thu, 16 Oct 2025 12:00:00 +0000

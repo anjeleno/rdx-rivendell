@@ -1,0 +1,44 @@
+#!/bin/sh
+set -e
+
+. /usr/share/debconf/confmodule
+
+case "$1" in
+    configure)
+        # Read selections
+    db_get rivendell-installer/install-type
+        INSTALL_TYPE="$RET"
+    db_get rivendell-installer/hostname
+        HOSTNAME_SET="$RET"
+    db_get rivendell-installer/set-timezone
+        SET_TZ="$RET"
+    db_get rivendell-installer/enable-ufw
+        ENABLE_UFW="$RET"
+    db_get rivendell-installer/harden-ssh
+        HARDEN_SSH="$RET"
+    db_get rivendell-installer/create-rd-user
+        CREATE_RD="$RET"
+    db_get rivendell-installer/install-mate
+        INSTALL_MATE="$RET"
+
+        # Detect Ubuntu series
+        UBUNTU_VERSION="$(lsb_release -rs 2>/dev/null || echo unknown)"
+
+        # TODO: Implement logic mirroring rivendell-auto-install.sh here in an idempotent way
+        # - Optionally set hostname
+        # - Optionally run tzdata configuration
+        # - Install and configure xrdp without forcing a specific desktop
+        # - Install Rivendell 4.3.0 and pin/hold packages
+        # - Create pypad meta file
+        # - Install broadcast tools and copy APPS payload
+        # - Apply Icecast config and enable service
+        # - Disable pulseaudio autospawn, set audio limits
+        # - Fix pypad.py on 24.04
+        # - Extract DB password and import SQL
+        # - Offer UFW and SSH hardening
+        # - Avoid reboot; print a note if reboot recommended
+
+        ;;
+esac
+
+exit 0

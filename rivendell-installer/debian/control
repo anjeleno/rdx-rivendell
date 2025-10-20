@@ -1,0 +1,18 @@
+Source: rivendell-installer
+Section: admin
+Priority: optional
+Maintainer: Rivendell Cloud <maintainer@example.com>
+Standards-Version: 4.6.2
+Build-Depends: debhelper-compat (= 13), dh-systemd, po-debconf
+Homepage: https://github.com/anjeleno/rivendell-cloud
+
+Package: rivendell-installer
+Architecture: all
+Depends: ${misc:Depends}
+Recommends: xrdp, icecast2, jackd2, qjackctl, liquidsoap, vlc, vlc-plugin-jack, mariadb-server
+Description: Meta-installer for Rivendell 4.3.0 with custom stack and configs
+ This package orchestrates the installation and configuration of Rivendell 4.3.0
+ and related broadcasting tools, applying opinionated defaults and optional
+ security hardening. It uses debconf to prompt for install type, hostname,
+ timezone, and security choices. For fully offline installs, use the makeself
+ bundle included in this repository.

@@ -1,0 +1,4 @@
+# Offline MATE desktop bundle for Ubuntu 22.04 (jammy)
+ubuntu-mate-desktop
+lightdm
+dbus-x11

@@ -1,0 +1,4 @@
+# Offline MATE desktop bundle for Ubuntu 24.04 (noble)
+ubuntu-mate-desktop
+lightdm
+dbus-x11

@@ -1,0 +1,16 @@
+# Base stack for offline install on Ubuntu 24.04 (noble)
+rivendell
+rivendell-scheduler
+rivendell-web
+icecast2
+jackd2
+qjackctl
+liquidsoap
+vlc
+vlc-plugin-jack
+xrdp
+mariadb-server
+tzdata
+ufw
+whiptail
+zenity

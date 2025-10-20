@@ -1,0 +1,1 @@
+64b7bc65d9fe313b662246f6b14a430dc77cda4e973b8bffbd7359cc6b759328  rivendell-installer-0.1.2-20251019.run

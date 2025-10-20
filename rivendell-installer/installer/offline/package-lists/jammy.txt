@@ -1,0 +1,17 @@
+# Base stack for offline install on Ubuntu 22.04 (jammy)
+# rivendell packages must resolve to 4.3.0 via repo or local debs
+rivendell
+rivendell-scheduler
+rivendell-web
+icecast2
+jackd2
+qjackctl
+liquidsoap
+vlc
+vlc-plugin-jack
+xrdp
+mariadb-server
+tzdata
+ufw
+whiptail
+zenity

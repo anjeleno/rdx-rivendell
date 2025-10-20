@@ -1,0 +1,2 @@
+# No longer track .run artifacts with Git LFS; they should be published as
+# GitHub Release assets instead of stored in the repository.

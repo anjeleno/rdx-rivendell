@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Add Cron Jobs
+Comment=Add nightly SQL backup and autologgen cron jobs
+Exec=/home/rd/imports/APPS/add_cron_jobs.sh
+Icon=utilities-terminal
+Terminal=true

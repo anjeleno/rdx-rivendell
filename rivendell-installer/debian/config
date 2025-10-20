@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+. /usr/share/debconf/confmodule
+
+db_version 2.0
+
+db_input medium rivendell-installer/install-type || true
+db_input medium rivendell-installer/hostname || true
+db_input medium rivendell-installer/set-timezone || true
+db_input medium rivendell-installer/enable-ufw || true
+db_input medium rivendell-installer/harden-ssh || true
+db_input medium rivendell-installer/create-rd-user || true
+db_input medium rivendell-installer/install-mate || true
+
+db_go || true
+
+exit 0

@@ -1,0 +1,63 @@
+# Generic OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*~
+.idea/
+.vscode/
+
+# Logs and local state
+*.log
+*.bak
+*.old
+*.retry
+*.pid
+*.seed
+.env
+.env.*
+
+# Build artifacts
+# Keep dist/ in repo, but ignore large binary installers by default.
+!dist/
+dist/*
+!dist/SHA256SUMS.txt
+*.deb
+*.ddeb
+*.tar.gz
+*.tar.xz
+*.zip
+*.run
+
+# Offline bundle caches (large, regenerated)
+installer/offline/packages/
+
+# Ignore test tone payload (still included in .run via payload)
+installer/offline/payload/999999_001.wav
+
+# Temporary build workspace
+/tmp/
+*.cache/
+
+# Python caches (if any helpers/scripts)
+__pycache__/
+*.pyc
+
+# Node/npm (if later tooling added)
+node_modules/
+package-lock.json
+
+# Apt mirror/aptly (if used locally)
+.aptly/
+
+# Local machine-specific files not intended for source control
+*.local
+.ssh/
+.gnupg/
+# Ignore log files
+*.log
+
+# Ignore future SQL dump files but keep the script
+/home/rd/imports/APPS/.sql/*.sql
+!home/rd/imports/APPS/.sql/daily_db_backup.sh  # Keep the backup script
