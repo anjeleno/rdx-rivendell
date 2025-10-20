@@ -2,11 +2,15 @@
 
 **Professional broadcast audio system with intelligent routing and critical connection protection**
 
-RDX enhances Rivendell v4+ with **broadcast-grade intelligence**: smart hardware detection, automatic audio routing, and bulletproof protection for critical connections. Your live broadcast audio is safe while gaining unprecedented control over complex routing scenarios.
+RDX enhances Rivendell v4+ with **broadcast-grade intelligence**: smart hardware detection, automatic audio routing, and bulletproof protection for critical connections. Critical broadcast audio is safe while gaining unprecedented control over complex routing scenarios. 
 
-## 🎯 Project Vision
+Eliminates the guesswork out of integrating a comprehensive streaming and processing stack into Rivendell. Standards-based. Core functions of streaming and processing are managed directly from RDAdmin, eliminating the need to edit config files in the terminal. Adds native AES67 driver support to Rivendell. 
 
-Transform Rivendell from an excellent radio automation system into a **complete broadcast ecosystem** with seamless control over the entire audio chain:
+Virtualizes and replaces expensive outboard gear used for remote broadcasts. Example: set up an Azuracast server as a remote-relay server. Use BUTT as a streaming source on-site at a live broadcast to connect to the relay server. Connect to the relay stream as an ordinary listener with VLC. VLC captures live audio and routes over Jack to the Rivendell record inputs to pass through live remote broadcast audio.
+
+## 🎯 Project Objective:
+
+RDX extends Rivendell's core functionality with modular management of streaming, processing, rotuing of AES67, Jack aware applcations. With smart codec and stream buidling. Feels like a nativate Rivendell application, but safe to install/uninstall without dirupting mission critical audio. 
 
 - **JACK Audio**: Profile-based management with device discovery and intelligent patchbay
 - **Streaming**: Integrated Icecast configuration and Liquidsoap control
@@ -65,14 +69,14 @@ RDX follows the **Extension Package** approach for maximum compatibility:
 - **Adaptive Configuration**: Learns your hardware and suggests optimal routing
 - **One-Command Setup**: Complete broadcast chain from a single profile load
 
-### 📡 Enhanced JACK Management
-- **Real-Time Monitoring**: Live JACK client detection and connection management
-- **Connection State Tracking**: Maintains awareness of current routing configuration
+### 📡 Simplified JACK Management
+- **Eliminates Manual Patching**: RDX handles all JACK connections automatically
+- **One-Command Setup**: Complete broadcast chain from single profile command  
+- **Real-Time Intelligence**: Adapts to hardware changes without user intervention
 - **Multi-User Support**: Promiscuous mode support for cross-user compatibility
 - **Professional Reliability**: Broadcast-safe operations with intelligent safeguards
-- **Liquidsoap Management**: Script validation, multi-stream support
-- **Stereo Tool Control**: Auto-startup, multiple instance management
-- **Service Orchestration**: Proper startup ordering and dependency management
+- **Integrated Service Control**: Liquidsoap, Stereo Tool, and streaming services managed together
+- **Focus on Content**: Operators focus on broadcasting, not technical routing
 
 ### Network Audio
 - **AES67 Support**: Pluggable provider system for various AoIP stacks
@@ -108,7 +112,7 @@ make -j$(nproc)
 ./src/rdx-jack/rdx-jack-helper --disconnect stereo_tool  # 🛡️ PROTECTED!
 ```
 
-Watch the magic happen in **QJackCtl Graph** - intelligent routing with bulletproof protection!
+Watch **intelligent routing in action** - automatic connections with bulletproof protection!
 
 ## �📦 Installation
 

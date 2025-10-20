@@ -215,13 +215,10 @@ install_broadcast_tools() {
     fi
     
     if [ "${DETECTED_TOOLS["qjackctl"]}" = "missing" ]; then
-        read -p "   🔌 Install QJackCtl (JACK Control & Monitoring)? [Y/n]: " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            INSTALL_TOOLS["qjackctl"]="yes"
-        fi
+        # QJackCtl installed as dependency for JACK tools, but RDX provides the interface
+        INSTALL_TOOLS["qjackctl"]="auto"
     else
-        echo "   ✅ QJackCtl - Already installed"
+        echo "   ✅ JACK Tools - Available (managed by RDX)"
     fi
     
     # Now install selected tools
@@ -229,7 +226,7 @@ install_broadcast_tools() {
     echo "📦 Installing selected broadcast tools..."
     
     for tool in "${!INSTALL_TOOLS[@]}"; do
-        if [ "${INSTALL_TOOLS[$tool]}" = "yes" ]; then
+        if [ "${INSTALL_TOOLS[$tool]}" = "yes" ] || [ "${INSTALL_TOOLS[$tool]}" = "auto" ]; then
             install_single_tool "$tool"
         fi
     done
@@ -266,7 +263,7 @@ install_single_tool() {
             install_audacity
             ;;
         "qjackctl")
-            install_qjackctl
+            install_qjackctl_dependency
             ;;
         *)
             echo "⚠️  Unknown tool: $tool"
@@ -418,13 +415,15 @@ install_audacity() {
     fi
 }
 
-install_qjackctl() {
+install_qjackctl_dependency() {
+    # Install QJackCtl silently as JACK dependency (RDX provides the user interface)
+    echo "📦 Installing JACK tools (managed by RDX)..."
     if command -v apt-get &> /dev/null; then
-        sudo apt-get install -y qjackctl
+        sudo apt-get install -y qjackctl --no-install-recommends
     elif command -v yum &> /dev/null; then
         sudo yum install -y qjackctl
     else
-        echo "⚠️  Please install QJackCtl manually for your distribution"
+        echo "⚠️  Please install JACK tools manually for your distribution"
     fi
 }
 
@@ -634,7 +633,7 @@ main() {
                 AUTO_TOOLS["liquidsoap"]="yes"
                 AUTO_TOOLS["icecast2"]="yes" 
                 AUTO_TOOLS["vlc"]="yes"
-                AUTO_TOOLS["qjackctl"]="yes"
+                AUTO_TOOLS["qjackctl"]="auto"
                 
                 for tool in "${!AUTO_TOOLS[@]}"; do
                     if [ "${DETECTED_TOOLS[$tool]}" = "missing" ]; then
@@ -692,7 +691,7 @@ main() {
     fi
     
     echo "📡 Your Rivendell system now has WICKED intelligent audio routing!"
-    echo "   Watch the magic in QJackCtl Graph as connections happen automatically."
+    echo "   RDX manages all JACK connections automatically - no manual patching needed!"
     echo
 }
 
