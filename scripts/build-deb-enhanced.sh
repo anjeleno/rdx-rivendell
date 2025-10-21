@@ -431,7 +431,7 @@ Version=1.0
 Type=Application
 Name=RDX Audio Control
 Comment=RDX Enhanced Audio Routing Control
-Exec=x-terminal-emulator -e /usr/local/bin/rdx-jack-helper --interactive
+Exec=x-terminal-emulator -e bash -c "/usr/local/bin/rdx-jack-helper --help; echo; echo 'Press Enter to close...'; read"
 Icon=audio-card
 Terminal=true
 Categories=AudioVideo;Audio;
@@ -447,7 +447,7 @@ Version=1.0
 Type=Application
 Name=RDX Streaming Control
 Comment=RDX AAC+ Streaming Control
-Exec=x-terminal-emulator -e /usr/local/bin/rdx-stream
+Exec=x-terminal-emulator -e bash -c "/usr/local/bin/rdx-stream; echo; echo 'Press Enter to close...'; read"
 Icon=applications-multimedia
 Terminal=true
 Categories=AudioVideo;Audio;
@@ -612,7 +612,8 @@ RDXEOF
             /usr/local/bin/rdx-deps check
             
             # Check if we're running during package installation (avoid deadlock)
-            if pgrep -f "gdebi|dpkg.*install|apt.*install" >/dev/null 2>&1; then
+            # Check for any dpkg/apt processes running
+            if ps aux | grep -E "(dpkg|apt-get|apt|gdebi)" | grep -v grep >/dev/null 2>&1; then
                 echo "📦 Package installation detected - skipping automatic dependency installation"
                 echo "   Dependencies will be installed after package installation completes"
                 echo ""
