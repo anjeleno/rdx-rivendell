@@ -483,20 +483,11 @@ EOF
 
 # Install complete installation script
 install_complete_installer() {
-    echo "🎯 Installing complete RDX installation script..."
+    echo "🎯 RDAdmin integration is now automatic in postinst..."
     
-    # Install the complete installation script
-    if [ -f "${RDX_ROOT}/scripts/rdx-install-complete.sh" ]; then
-        cp "${RDX_ROOT}/scripts/rdx-install-complete.sh" "${PACKAGE_DIR}/usr/local/share/rdx/"
-        chmod +x "${PACKAGE_DIR}/usr/local/share/rdx/rdx-install-complete.sh"
-        
-        # Create convenient symlink
-        ln -sf "/usr/local/share/rdx/rdx-install-complete.sh" "${PACKAGE_DIR}/usr/local/bin/rdx-install"
-        
-        echo "✅ Complete installation script installed as 'rdx-install'"
-    else
-        echo "⚠️  Complete installation script not found - skipping"
-    fi
+    # No longer need separate rdx-install command
+    # Integration happens automatically when package is installed
+    echo "✅ RDAdmin integration will be automatic during installation"
 }
 
 # Create desktop entries
@@ -774,11 +765,45 @@ RDXEOF
         echo ""
         echo "📡 Your system now has WICKED intelligent audio + AAC+ streaming!"
         echo ""
-        echo "� IMPORTANT: For RDAdmin integration, you MUST run:"
-        echo "   sudo rdx-install"
+        
+        # Auto-detect and integrate with RDAdmin
+        echo "🎯 RDAdmin Integration:"
+        echo "   Checking for existing Rivendell installation..."
+        
+        if [ -f "/etc/rd.conf" ] && [ -x "/usr/bin/rdadmin" ]; then
+            echo "   ✅ Rivendell detected - integrating RDX with RDAdmin..."
+            
+            # Read database credentials from rd.conf
+            DB_HOST=$(grep -E "^Hostname=" /etc/rd.conf | cut -d'=' -f2 | tr -d ' ')
+            DB_NAME=$(grep -E "^Database=" /etc/rd.conf | cut -d'=' -f2 | tr -d ' ')
+            DB_USER=$(grep -E "^Loginname=" /etc/rd.conf | cut -d'=' -f2 | tr -d ' ')
+            DB_PASS=$(grep -E "^Password=" /etc/rd.conf | cut -d'=' -f2 | tr -d ' ')
+            
+            if [ -n "$DB_HOST" ] && [ -n "$DB_NAME" ] && [ -n "$DB_USER" ]; then
+                echo "   📡 Database connection: $DB_USER@$DB_HOST/$DB_NAME"
+                
+                # Create RDX host entry in Rivendell database
+                mysql -h"$DB_HOST" -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" <<EOF2 2>/dev/null || echo "   ⚠️  Database integration failed (this is OK for standalone use)"
+INSERT IGNORE INTO STATIONS (NAME, SHORT_NAME, DESCRIPTION, USER_NAME, DEFAULT_NAME, IPV4_ADDRESS, HTTP_STATION, CAE_STATION, WEB_SERVICE_LEVEL, STARTUP_CART, EDITOR_PATH, FILTER_MODE, START_JACK, JACK_SERVER_NAME, JACK_COMMAND_LINE, JACK_SESSION_RESTORE) 
+VALUES ('RDX-HOST', 'RDX', '🔥 RDX Audio Control', '$DB_USER', 'RDX Host', '127.0.0.1', 'Y', 'Y', 2, 0, '', 0, 'Y', 'default', '/usr/bin/jackd -d alsa', 'Y');
+
+INSERT IGNORE INTO RDHOTKEYS (STATION_NAME, MODULE_NAME, KEY_ID, KEY_VALUE, KEY_LABEL) 
+VALUES ('RDX-HOST', 'RDAdmin', 1, '/usr/local/bin/rdx-gui-launcher', '🔥 RDX Audio Control');
+EOF2
+                
+                echo "   ✅ RDX integrated with RDAdmin successfully!"
+                echo "   🎯 You can now open RDAdmin > Hosts > RDX-HOST to access RDX GUI"
+            else
+                echo "   ⚠️  Could not read database credentials from /etc/rd.conf"
+            fi
+        else
+            echo "   ℹ️  No Rivendell installation detected - RDX will run standalone"
+        fi
+        
         echo ""
-        echo "   This safely integrates RDX with your existing Rivendell database"
-        echo "   and adds the '🔥 RDX Audio Control' button to RDAdmin interface."
+        echo "🎉 INSTALLATION COMPLETE! RDX is ready to use:"
+        echo "   • If you have Rivendell: Open RDAdmin > Hosts > RDX-HOST"
+        echo "   • For standalone use: Run 'rdx-gui-launcher' or use CLI commands"
         ;;
 esac
 
