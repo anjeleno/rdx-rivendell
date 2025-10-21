@@ -536,6 +536,12 @@ main() {
     fi
     
     if [[ "$INSTALL_DEPS_ONLY" == "true" ]]; then
+        # Check for root privileges for installation
+        if [[ $EUID -ne 0 ]]; then
+            print_error "Installing dependencies requires root privileges. Use: sudo rdx-deps install"
+            exit 1
+        fi
+        
         detect_os
         detect_rivendell
         

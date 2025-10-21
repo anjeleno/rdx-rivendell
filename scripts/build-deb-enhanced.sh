@@ -611,7 +611,7 @@ RDXEOF
             /usr/local/bin/rdx-deps check
             
             # Auto-install missing dependencies with user notification
-            if /usr/local/bin/rdx-deps scan | grep -q "Missing:"; then
+            if /usr/local/bin/rdx-deps scan | grep -q "dependencies missing"; then
                 echo "📦 Installing missing dependencies automatically..."
                 echo "   Installing: JACK audio, FFmpeg, multimedia libraries..."
                 
@@ -622,7 +622,7 @@ RDXEOF
                 DEBIAN_FRONTEND=noninteractive /usr/local/bin/rdx-deps install --auto-yes || {
                     echo "⚠️  Automatic dependency installation completed with warnings"
                     echo "   Some packages may need manual configuration"
-                    echo "   Run: sudo rdx-deps install --manual for interactive setup"
+                    echo "   Run: sudo rdx-deps install for interactive setup"
                 }
                 
                 echo "✅ Dependency installation complete"
