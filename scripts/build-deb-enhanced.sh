@@ -752,11 +752,14 @@ build_deb_package() {
     # Build the package
     dpkg-deb --build "${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}"
     
+    # Create deb-builds directory if it doesn't exist
+    mkdir -p "$RDX_ROOT/deb-builds"
+    
     # Move to final location
-    mv "${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb" "$RDX_ROOT/"
+    mv "${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb" "$RDX_ROOT/deb-builds/"
     
     echo "✅ Enhanced Debian package built successfully!"
-    echo "📦 Package: ${RDX_ROOT}/${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb"
+    echo "📦 Package: ${RDX_ROOT}/deb-builds/${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb"
 }
 
 # Show package information
@@ -767,7 +770,7 @@ show_package_info() {
     
     cd "$RDX_ROOT"
     
-    local deb_file="${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb"
+    local deb_file="${RDX_ROOT}/deb-builds/${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb"
     
     echo "📦 File: $deb_file"
     echo "📏 Size: $(ls -lh "$deb_file" | awk '{print $5}')"
