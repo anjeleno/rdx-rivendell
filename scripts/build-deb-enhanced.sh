@@ -611,8 +611,15 @@ RDXEOF
             # First check what's missing
             /usr/local/bin/rdx-deps check
             
-            # Auto-install missing dependencies with user notification
-            if /usr/local/bin/rdx-deps scan | grep -q "missing"; then
+            # Check if we're running during package installation (avoid deadlock)
+            if pgrep -f "gdebi|dpkg.*install|apt.*install" >/dev/null 2>&1; then
+                echo "📦 Package installation detected - skipping automatic dependency installation"
+                echo "   Dependencies will be installed after package installation completes"
+                echo ""
+                echo "🔧 To install missing dependencies manually, run:"
+                echo "   sudo rdx-deps install"
+                echo "   OR: sudo apt-get install pkg-config qtbase5-dev-tools"
+            elif /usr/local/bin/rdx-deps scan | grep -q "missing"; then
                 echo "📦 Installing missing dependencies automatically..."
                 echo "   Installing: JACK audio, FFmpeg, multimedia libraries..."
                 
