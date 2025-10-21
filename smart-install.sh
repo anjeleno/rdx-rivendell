@@ -11,6 +11,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_LOG="/tmp/rdx-install.log"
 BACKUP_DIR="/tmp/rdx-backup-$(date +%Y%m%d-%H%M%S)"
 
+# Create log file with proper permissions
+if [[ $EUID -eq 0 ]]; then
+    # Running as root, use /tmp with proper permissions
+    touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/dev/null"
+    chmod 666 "$INSTALL_LOG" 2>/dev/null || true
+else
+    # Running as user, use home directory
+    INSTALL_LOG="$HOME/rdx-install.log"
+    touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/dev/null"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
