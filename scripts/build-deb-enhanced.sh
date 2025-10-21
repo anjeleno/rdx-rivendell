@@ -356,7 +356,9 @@ show_help() {
     echo ""
     echo "COMMANDS:"
     echo "    check              Check system dependencies"
+    echo "    scan               Scan for missing dependencies"
     echo "    install            Install missing dependencies"
+    echo "    install --auto-yes Install dependencies non-interactively"
     echo "    list               List all dependencies"
     echo "    rivendell          Check Rivendell installation"
     echo "    audio              Check audio system"
@@ -364,7 +366,9 @@ show_help() {
     echo ""
     echo "EXAMPLES:"
     echo "    rdx-deps check                   # Check all dependencies"
+    echo "    rdx-deps scan                    # Scan for missing packages"
     echo "    rdx-deps install                 # Install missing packages"
+    echo "    rdx-deps install --auto-yes      # Auto-install without prompts"
     echo "    rdx-deps rivendell               # Check Rivendell status"
 }
 
@@ -373,9 +377,18 @@ case "$1" in
         echo "🔍 Checking RDX dependencies..."
         "$SMART_INSTALLER" --check-only
         ;;
+    scan)
+        echo "🔍 Scanning for missing dependencies..."
+        "$SMART_INSTALLER" --scan-only
+        ;;
     install)
-        echo "📦 Installing missing dependencies..."
-        "$SMART_INSTALLER" --install-deps-only
+        if [ "$2" = "--auto-yes" ]; then
+            echo "📦 Installing missing dependencies automatically..."
+            DEBIAN_FRONTEND=noninteractive "$SMART_INSTALLER" --install-deps-only --auto-yes
+        else
+            echo "📦 Installing missing dependencies..."
+            "$SMART_INSTALLER" --install-deps-only
+        fi
         ;;
     list)
         echo "📋 RDX Dependencies:"
@@ -589,10 +602,33 @@ RDXEOF
             fi
         fi
         
-        # Run smart dependency check
+        # Run smart dependency check and auto-install
         if [ -x "/usr/local/bin/rdx-deps" ]; then
-            echo "🧠 Running smart dependency check..."
-            /usr/local/bin/rdx-deps check || echo "ℹ️  Some dependencies may need manual installation"
+            echo "🧠 Running automated dependency installation..."
+            echo "   This may take a few minutes to install missing packages..."
+            
+            # First check what's missing
+            /usr/local/bin/rdx-deps check
+            
+            # Auto-install missing dependencies with user notification
+            if /usr/local/bin/rdx-deps scan | grep -q "Missing:"; then
+                echo "📦 Installing missing dependencies automatically..."
+                echo "   Installing: JACK audio, FFmpeg, multimedia libraries..."
+                
+                # Update package lists first
+                apt-get update -qq || true
+                
+                # Run the smart installer non-interactively
+                DEBIAN_FRONTEND=noninteractive /usr/local/bin/rdx-deps install --auto-yes || {
+                    echo "⚠️  Automatic dependency installation completed with warnings"
+                    echo "   Some packages may need manual configuration"
+                    echo "   Run: sudo rdx-deps install --manual for interactive setup"
+                }
+                
+                echo "✅ Dependency installation complete"
+            else
+                echo "✅ All dependencies already satisfied"
+            fi
         fi
         
         echo ""

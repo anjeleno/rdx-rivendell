@@ -25,6 +25,10 @@ INTERACTIVE=true
 FORCE_INSTALL=false
 SKIP_DEPS=false
 DRY_RUN=false
+CHECK_ONLY=false
+SCAN_ONLY=false
+INSTALL_DEPS_ONLY=false
+AUTO_YES=false
 
 print_header() {
     clear
@@ -56,29 +60,28 @@ print_progress() {
 }
 
 usage() {
-    print_header
-    echo "Usage: $0 [options]"
-    echo
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "RDX Smart Installer - Intelligent dependency detection for Rivendell"
+    echo ""
     echo "Options:"
     echo "  -y, --yes           Non-interactive mode (auto-confirm)"
+    echo "  --auto-yes          Same as --yes (for compatibility)"
     echo "  -f, --force         Force installation even if dependencies fail"
     echo "  -s, --skip-deps     Skip dependency installation"
     echo "  -d, --dry-run       Show what would be installed without doing it"
+    echo "  --check-only        Only check dependencies, don't install"
+    echo "  --scan-only         Only scan for missing packages"
+    echo "  --install-deps-only Only install missing dependencies"
     echo "  -h, --help          Show this help"
-    echo
-    echo "Examples:"
-    echo "  $0                  Interactive installation with dependency detection"
-    echo "  $0 -y               Automatic installation"
-    echo "  $0 -d               Preview what would be installed"
-    echo "  $0 -f               Force install even with missing dependencies"
-    echo
 }
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -y|--yes)
+        -y|--yes|--auto-yes)
             INTERACTIVE=false
+            AUTO_YES=true
             shift
             ;;
         -f|--force)
@@ -91,6 +94,19 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --check-only)
+            CHECK_ONLY=true
+            shift
+            ;;
+        --scan-only)
+            SCAN_ONLY=true
+            shift
+            ;;
+        --install-deps-only)
+            INSTALL_DEPS_ONLY=true
+            INTERACTIVE=false
             shift
             ;;
         -h|--help)
@@ -504,6 +520,35 @@ show_installation_summary() {
 
 # Main installation flow
 main() {
+    # Handle specialized operation modes
+    if [[ "$CHECK_ONLY" == "true" ]]; then
+        print_header
+        detect_os
+        detect_rivendell
+        detect_dependencies
+        exit 0
+    fi
+    
+    if [[ "$SCAN_ONLY" == "true" ]]; then
+        detect_os
+        detect_dependencies
+        exit 0
+    fi
+    
+    if [[ "$INSTALL_DEPS_ONLY" == "true" ]]; then
+        detect_os
+        detect_rivendell
+        
+        # Set non-interactive mode for automatic installation
+        export DEBIAN_FRONTEND=noninteractive
+        
+        if ! detect_dependencies; then
+            install_dependencies
+        fi
+        exit 0
+    fi
+    
+    # Normal full installation flow
     print_header
     
     # Initial setup
