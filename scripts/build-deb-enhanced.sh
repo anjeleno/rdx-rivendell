@@ -22,8 +22,59 @@ INCLUDE_SMART_INSTALL=true
 INCLUDE_GUI=false
 BUILD_TYPE="Release"
 
-echo "🔥 RDX Enhanced Debian Package Builder v${PACKAGE_VERSION}"
+# Auto-detect Rivendell installation and enable GUI automatically
+detect_rivendell_and_configure() {
+    echo "� Auto-detecting system configuration..."
+    
+    # Check for Rivendell installation
+    if [ -f "/etc/rd.conf" ] && [ -f "/usr/bin/rdadmin" ]; then
+        echo "✅ Rivendell installation detected - enabling GUI components"
+        INCLUDE_GUI=true
+        
+        # Check for database connectivity
+        if [ -f "/etc/rd.conf" ]; then
+            local db_host=$(grep "^Hostname=" /etc/rd.conf | cut -d'=' -f2)
+            local db_user=$(grep "^Loginname=" /etc/rd.conf | cut -d'=' -f2)
+            local db_pass=$(grep "^Password=" /etc/rd.conf | cut -d'=' -f2)
+            local db_name=$(grep "^Database=" /etc/rd.conf | cut -d'=' -f2)
+            
+            if mysql -h "$db_host" -u "$db_user" -p"$db_pass" -D "$db_name" -e "SELECT 1;" >/dev/null 2>&1; then
+                echo "✅ Rivendell database connectivity verified"
+            else
+                echo "⚠️  Rivendell database not accessible - GUI will be basic"
+            fi
+        fi
+    else
+        echo "ℹ️  No Rivendell installation detected - GUI components disabled"
+        INCLUDE_GUI=false
+    fi
+    
+    # Check for Qt5 development packages
+    if dpkg -l | grep -q "qtbase5-dev\|libqt5widgets5"; then
+        echo "✅ Qt5 development packages available"
+    else
+        echo "⚠️  Qt5 development packages not found - GUI may be limited"
+    fi
+    
+    # Check for JACK
+    if command -v jackd >/dev/null 2>&1 || dpkg -l | grep -q "jackd2"; then
+        echo "✅ JACK Audio Connection Kit detected"
+    else
+        echo "⚠️  JACK not detected - will include in dependencies"
+    fi
+    
+    echo "🎯 Build configuration determined:"
+    echo "   AAC+ Streaming: $INCLUDE_AAC"
+    echo "   Smart Installer: $INCLUDE_SMART_INSTALL" 
+    echo "   GUI Components: $INCLUDE_GUI"
+    echo "   Build Type: $BUILD_TYPE"
+}
+
+echo "�🔥 RDX Enhanced Debian Package Builder v${PACKAGE_VERSION}"
 echo "=========================================================="
+
+# Run auto-detection first
+detect_rivendell_and_configure
 
 # Parse command line arguments
 parse_args() {
@@ -41,7 +92,12 @@ parse_args() {
                 ;;
             --include-gui)
                 INCLUDE_GUI=true
-                echo "🖥️  GUI components enabled"
+                echo "🖥️  GUI components force-enabled"
+                shift
+                ;;
+            --no-gui)
+                INCLUDE_GUI=false
+                echo "🖥️  GUI components force-disabled"
                 shift
                 ;;
             --debug)
@@ -86,26 +142,31 @@ USAGE:
 OPTIONS:
     --no-aac                Exclude AAC+ streaming functionality
     --no-smart-install      Exclude smart dependency installer
-    --include-gui           Include GUI components (requires Rivendell)
+    --include-gui           Force include GUI components (overrides auto-detection)
+    --no-gui                Force exclude GUI components (overrides auto-detection)
     --debug                 Build with debug symbols
     --package-name NAME     Custom package name (default: rdx-rivendell-enhanced)
     --version VERSION       Custom version (default: 2.0.0)
     --help                  Show this help message
 
 EXAMPLES:
-    # Build full enhanced package (default)
+    # Build with auto-detection (recommended)
     $0
 
     # Build minimal package without AAC+ streaming
     $0 --no-aac
 
-    # Build with GUI support and custom name
+    # Force GUI components even if Rivendell not detected
     $0 --include-gui --package-name rdx-studio --version 2.1.0
+
+    # Build without GUI components even on Rivendell system
+    $0 --no-gui
 
     # Build debug version for development
     $0 --debug --package-name rdx-dev
 
 FEATURES:
+    🔍 Auto-detection of Rivendell installation and GUI capability
     ✅ Core JACK audio routing with intelligent management
     ✅ AAC+ streaming (HE-AAC v1/v2, LC-AAC) with FFmpeg
     ✅ Smart dependency detection and auto-installation
@@ -504,7 +565,7 @@ create_control_file() {
     local gui_deps=""
     
     if [ "$INCLUDE_AAC" = true ]; then
-        aac_deps=", ffmpeg (>= 4.0.0), libavcodec58, libavformat58, libavutil56"
+        aac_deps=", ffmpeg (>= 4.0.0), libavcodec60 | libavcodec58, libavformat60 | libavformat58, libavutil58 | libavutil56"
     fi
     
     if [ "$INCLUDE_GUI" = true ]; then

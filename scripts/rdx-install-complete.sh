@@ -69,11 +69,11 @@ detect_rivendell() {
         exit 1
     fi
     
-    # Extract database credentials from rd.conf
-    DB_HOST=$(grep "^Hostname=" "$RIVENDELL_CONFIG" | cut -d'=' -f2)
-    DB_USER=$(grep "^Loginname=" "$RIVENDELL_CONFIG" | cut -d'=' -f2)
-    DB_PASS=$(grep "^Password=" "$RIVENDELL_CONFIG" | cut -d'=' -f2)
-    DB_NAME=$(grep "^Database=" "$RIVENDELL_CONFIG" | cut -d'=' -f2)
+    # Extract database credentials from rd.conf [mySQL] section
+    DB_HOST=$(grep -A 10 "^\[mySQL\]" "$RIVENDELL_CONFIG" | grep "^Hostname=" | cut -d'=' -f2)
+    DB_USER=$(grep -A 10 "^\[mySQL\]" "$RIVENDELL_CONFIG" | grep "^Loginname=" | cut -d'=' -f2)
+    DB_PASS=$(grep -A 10 "^\[mySQL\]" "$RIVENDELL_CONFIG" | grep "^Password=" | cut -d'=' -f2)
+    DB_NAME=$(grep -A 10 "^\[mySQL\]" "$RIVENDELL_CONFIG" | grep "^Database=" | cut -d'=' -f2)
     
     log_success "Rivendell detected - Database: $DB_NAME@$DB_HOST"
     
