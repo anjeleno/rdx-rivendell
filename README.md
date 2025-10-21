@@ -135,12 +135,17 @@ make -j$(nproc)
 
 Watch **intelligent routing in action** - automatic connections with bulletproof protection!
 
-## � **Current Release: v1.0.0 "WICKED"**
-
 ## 🏆 **Current Release: v2.0.0 "Enhanced Pro"**
 
 **✅ PRODUCTION READY** - Complete broadcast automation solution:
 
+### 📦 **Direct Download:**
+```bash
+wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.0.0/rdx-rivendell-enhanced_2.0.0_amd64.deb
+sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+```
+
+### 🚀 **Enhanced Features:**
 - **🆕 AAC+ Streaming Engine**: Professional HE-AAC v1/v2 encoding with custom profiles
 - **🆕 Smart Dependency Manager**: Automatic detection and installation of missing packages  
 - **🆕 Enhanced Packaging**: Complete .deb package with integrated streaming capabilities
