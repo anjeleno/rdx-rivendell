@@ -504,15 +504,36 @@ create_desktop_entries() {
     echo "🖥️  Creating desktop entries..."
     
     # Main CLI interface
+    # Create GUI launcher script if GUI is available
+    if [ "$INCLUDE_GUI" = true ]; then
+        cat > "${PACKAGE_DIR}/usr/local/bin/rdx-gui-launcher" <<'EOF'
+#!/bin/bash
+# RDX GUI Launcher - Detects and launches appropriate interface
+
+# Check if GUI is available
+if [ -n "$DISPLAY" ] && command -v rdx-jack-helper >/dev/null 2>&1; then
+    # Try to launch GUI version
+    if rdx-jack-helper --version >/dev/null 2>&1; then
+        # Launch with GUI if Qt is available
+        exec rdx-jack-helper "$@"
+    fi
+fi
+
+# Fallback to terminal interface
+exec x-terminal-emulator -e bash -c "rdx-jack-helper --help; echo; echo 'Press Enter to close...'; read"
+EOF
+        chmod +x "${PACKAGE_DIR}/usr/local/bin/rdx-gui-launcher"
+    fi
+
     cat > "${PACKAGE_DIR}/usr/share/applications/rdx-control.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=RDX Audio Control
 Comment=RDX Enhanced Audio Routing Control
-Exec=x-terminal-emulator -e bash -c "/usr/local/bin/rdx-jack-helper --help; echo; echo 'Press Enter to close...'; read"
+Exec=/usr/local/bin/rdx-gui-launcher
 Icon=audio-card
-Terminal=true
+Terminal=false
 Categories=AudioVideo;Audio;
 Keywords=audio;jack;rivendell;broadcast;routing;aac;streaming;
 StartupNotify=true
@@ -526,7 +547,7 @@ Version=1.0
 Type=Application
 Name=RDX Streaming Control
 Comment=RDX AAC+ Streaming Control
-Exec=x-terminal-emulator -e bash -c "/usr/local/bin/rdx-stream; echo; echo 'Press Enter to close...'; read"
+Exec=x-terminal-emulator -e bash -c "echo 'RDX Streaming Control'; echo '====================='; rdx-stream --help; echo; echo 'Quick Start:'; echo '  rdx-stream start hq    # Start high quality stream'; echo '  rdx-stream stop        # Stop streaming'; echo '  rdx-stream status      # Check status'; echo; echo 'Press Enter to close...'; read"
 Icon=applications-multimedia
 Terminal=true
 Categories=AudioVideo;Audio;
@@ -559,17 +580,19 @@ EOF
 create_control_file() {
     echo "📋 Creating enhanced Debian control file..."
     
-    # Build dependencies list
-    local base_deps="libc6 (>= 2.34), libqt5core5a (>= 5.15.0), libqt5dbus5 (>= 5.15.0), libjack-jackd2-0 | libjack0, jackd2, libasound2 (>= 1.2.0), libdbus-1-3, systemd"
+    # Build dependencies list - Core dependencies only (move optional to Recommends)
+    local base_deps="libc6 (>= 2.34), libqt5core5a (>= 5.12.0), libqt5dbus5 (>= 5.12.0), libjack-jackd2-0 | libjack0, libasound2 (>= 1.0.0), libdbus-1-3"
     local aac_deps=""
     local gui_deps=""
+    local recommends="rivendell (>= 4.0.0), jackd2, qjackctl"
     
     if [ "$INCLUDE_AAC" = true ]; then
-        aac_deps=", ffmpeg (>= 4.0.0), libavcodec60 | libavcodec58, libavformat60 | libavformat58, libavutil58 | libavutil56"
+        # Move FFmpeg to recommends for flexibility - not everyone needs streaming
+        recommends="$recommends, ffmpeg (>= 4.0.0), libavcodec60 | libavcodec58, libavformat60 | libavformat58, libavutil58 | libavutil56"
     fi
     
     if [ "$INCLUDE_GUI" = true ]; then
-        gui_deps=", libqt5widgets5, libqt5gui5"
+        gui_deps=", libqt5widgets5 (>= 5.12.0), libqt5gui5 (>= 5.12.0)"
     fi
     
     local all_deps="${base_deps}${aac_deps}${gui_deps}"
@@ -585,7 +608,7 @@ Installed-Size: $(du -sk "${PACKAGE_DIR}" | cut -f1)
 Maintainer: ${MAINTAINER}
 Homepage: https://github.com/anjeleno/rdx-rivendell
 Depends: ${all_deps}
-Recommends: rivendell (>= 4.0.0), vlc, vlc-plugin-jack, liquidsoap (>= 2.0.0), icecast2, stereo-tool
+Recommends: ${recommends}, vlc, vlc-plugin-jack, liquidsoap (>= 2.0.0), icecast2, stereo-tool
 Suggests: glasscoder, darkice, butt, obs-studio
 Conflicts: pulseaudio-module-jack
 Provides: rdx-audio-routing, rdx-aac-streaming
