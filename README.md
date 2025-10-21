@@ -91,7 +91,7 @@ RDX follows the **Extension Package** approach for maximum compatibility:
 
 ## � Quick Start
 
-Experience the **WICKED** intelligent routing system:
+Experience the **🚀🚀🚀** intelligent routing system:
 
 ```bash
 # Build RDX

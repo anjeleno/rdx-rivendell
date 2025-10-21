@@ -1,0 +1,2 @@
+/usr/bin/ar qc librdx-gui.a "CMakeFiles/rdx-gui.dir/rdx_jack_dialog.cpp.o" "CMakeFiles/rdx-gui.dir/rdx_integration.cpp.o"
+/usr/bin/ranlib librdx-gui.a

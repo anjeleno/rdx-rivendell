@@ -51,7 +51,7 @@ Description: Intelligent audio routing system for Rivendell
  Features:
   * Smart hardware detection (audio processors, streamers, inputs)
   * Automatic audio routing with conflict prevention
-  * Critical connection protection for live broadcast safety
+  * Patch protection for mission-critical audio routes
   * Profile-based service orchestration
   * Real-time monitoring and adaptation
  .
@@ -67,8 +67,8 @@ Package: rdx-broadcast-essentials
 Depends: rdx-rivendell, liquidsoap, icecast2, vlc, vlc-plugin-jack
 Description: Essential broadcast stack for RDX
  Installs the recommended minimal broadcast stack for RDX:
- Liquidsoap for streaming automation, Icecast2 for streaming server,
- and VLC with JACK support for media playback.
+ Liquidsoap for stream generation, Icecast2 for streaming server,
+ and VLC with JACK support for live remote audio-capture and pass-through to Rivendell.
 ```
 
 ### rdx-professional-stack  

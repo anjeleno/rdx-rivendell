@@ -11,9 +11,22 @@ rivendell-v4/
 *.so
 *.a
 build/
+build-*/
 dist/
 .deps/
 .libs/
+
+# CMake build files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+CMakeDoxyfile.in
+CMakeDoxygenDefaults.cmake
+
+# Generated binaries
+rdx-jack-helper
+rdx-gui
 
 # Qt build files
 moc_*.cpp
@@ -22,6 +35,13 @@ qrc_*.cpp
 *.moc
 Makefile
 *.pro.user*
+
+# Package build artifacts
+*.deb
+*.rpm
+*.tar.gz
+/tmp/
+rivendell-headers/
 
 # Autotools generated files
 configure

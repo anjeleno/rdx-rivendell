@@ -340,9 +340,10 @@ show_menu() {
     echo "3. Development Package       - Complete source for developers"
     echo "4. VM Deployment Image       - Optimized for virtual machines"
     echo "5. Create All Packages       - Generate all package types"
-    echo "6. Exit"
+    echo "6. Debian Package (.deb)     - Professional system package"
+    echo "7. Exit"
     echo
-    read -p "Select package type (1-6): " choice
+    read -p "Select package type (1-7): " choice
     
     case $choice in
         1)
@@ -368,11 +369,15 @@ show_menu() {
             ls -lh /tmp/rdx-*-${PACKAGE_VERSION}.tar.gz
             ;;
         6)
-            echo "👋 Goodbye!"
+            echo "� Creating Debian package (.deb)..."
+            "${SCRIPT_DIR}/build-deb-package.sh"
+            ;;
+        7)
+            echo "�👋 Goodbye!"
             exit 0
             ;;
         *)
-            echo "❌ Invalid choice. Please select 1-6."
+            echo "❌ Invalid choice. Please select 1-7."
             show_menu
             ;;
     esac
