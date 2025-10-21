@@ -494,6 +494,21 @@ install_complete_installer() {
 create_desktop_entries() {
     echo "🖥️  Creating desktop entries..."
     
+    # Install the enhanced RDAdmin launcher
+    if [ -f "${RDX_ROOT}/src/rdx-enhanced-launcher.py" ]; then
+        cp "${RDX_ROOT}/src/rdx-enhanced-launcher.py" "${PACKAGE_DIR}/usr/local/bin/"
+        chmod +x "${PACKAGE_DIR}/usr/local/bin/rdx-enhanced-launcher.py"
+        
+        # Create wrapper script
+        cat > "${PACKAGE_DIR}/usr/local/bin/rdx-enhanced-launcher" <<'EOF'
+#!/bin/bash
+# RDX Enhanced RDAdmin Launcher wrapper
+cd /usr/local/bin
+python3 rdx-enhanced-launcher.py "$@"
+EOF
+        chmod +x "${PACKAGE_DIR}/usr/local/bin/rdx-enhanced-launcher"
+    fi
+    
     # Main CLI interface
     # Create GUI launcher script if GUI is available
     if [ "$INCLUDE_GUI" = true ]; then
@@ -515,6 +530,22 @@ exec x-terminal-emulator -e bash -c "rdx-jack-helper --help; echo; echo 'Press E
 EOF
         chmod +x "${PACKAGE_DIR}/usr/local/bin/rdx-gui-launcher"
     fi
+
+    # Enhanced RDAdmin launcher (primary entry point)
+    cat > "${PACKAGE_DIR}/usr/share/applications/rdx-enhanced-rdadmin.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=🔥 RDX Enhanced RDAdmin
+Comment=Unified RDAdmin + RDX Control Center
+Exec=/usr/local/bin/rdx-enhanced-launcher
+Icon=applications-multimedia
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=rdadmin;rivendell;rdx;audio;broadcast;control;administration;
+StartupNotify=true
+StartupWMClass=rdx-enhanced-launcher
+EOF
 
     cat > "${PACKAGE_DIR}/usr/share/applications/rdx-control.desktop" <<EOF
 [Desktop Entry]
@@ -564,7 +595,7 @@ StartupNotify=true
 EOF
     fi
     
-    echo "✅ Desktop entries created"
+    echo "✅ Desktop entries created with enhanced RDAdmin launcher"
 }
 
 # Create enhanced control file
@@ -572,7 +603,7 @@ create_control_file() {
     echo "📋 Creating enhanced Debian control file..."
     
     # Build dependencies list - Core dependencies only (move optional to Recommends)
-    local base_deps="libc6 (>= 2.34), libqt5core5a (>= 5.12.0), libqt5dbus5 (>= 5.12.0), libjack-jackd2-0 | libjack0, libasound2 (>= 1.0.0), libdbus-1-3"
+    local base_deps="libc6 (>= 2.34), python3 (>= 3.8), python3-pyqt5 (>= 5.12.0), libqt5core5a (>= 5.12.0), libqt5dbus5 (>= 5.12.0), libjack-jackd2-0 | libjack0, libasound2 (>= 1.0.0), libdbus-1-3"
     local aac_deps=""
     local gui_deps=""
     local recommends="rivendell (>= 4.0.0), jackd2, qjackctl"
