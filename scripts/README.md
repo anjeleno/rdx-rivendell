@@ -8,7 +8,7 @@ This directory contains all scripts for building RDX Debian packages.
 **The complete, feature-rich package builder**
 - **Includes**: Core + AAC+ streaming + smart installer + optional GUI
 - **Best for**: Production deployments, complete installations
-- **Output**: `rdx-rivendell-enhanced_2.0.0_amd64.deb`
+- **Output**: `rdx-rivendell-enhanced_2.1.0_amd64.deb`
 
 ```bash
 # Build everything (recommended)
@@ -156,7 +156,7 @@ libqt5widgets5, libqt5gui5
 
 ### **Package Files**
 ```bash
-/root/rdx-rivendell/rdx-rivendell-enhanced_2.0.0_amd64.deb
+/root/rdx-rivendell/rdx-rivendell-enhanced_2.1.0_amd64.deb
 /root/rdx-rivendell/rdx-rivendell-core_1.0.0_amd64.deb
 /root/rdx-rivendell/rdx-rivendell_1.0.0_amd64.deb
 ```

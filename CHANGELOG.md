@@ -1,5 +1,28 @@
 # RDX (Rivendell Extended) - CHANGELOG
 
+## [2.1.0] - 2025-10-21 - "Automated Pro" Release 🤖
+
+### 🚀 BREAKTHROUGH: Fully Automated Dependency Installation
+
+#### Zero-Touch Installation Experience
+- **Automated Installation**: Dependencies install automatically during package install
+- **No User Interaction**: Complete hands-off dependency resolution
+- **Enhanced Post-Install**: Smart installer runs automatically during dpkg
+- **Error Recovery**: Fallback to manual mode with helpful guidance
+- **Progress Feedback**: User sees installation progress and status
+
+#### Enhanced Smart Installer
+- **New Operation Modes**: `--auto-yes`, `--scan-only`, `--check-only`, `--install-deps-only`
+- **Non-Interactive Mode**: `DEBIAN_FRONTEND=noninteractive` support
+- **Specialized Functions**: Targeted operations for automated systems
+- **Enhanced Error Handling**: Comprehensive error detection and recovery
+
+#### Improved User Experience
+- **One-Command Install**: Just `sudo dpkg -i package.deb` - everything else is automatic
+- **Professional Installation**: Same seamless experience as commercial software
+- **Universal Compatibility**: Works on any Ubuntu 22.04 system
+- **Support Reduction**: Users won't get stuck on dependency issues
+
 ## [2.0.0] - 2025-10-20 - "Enhanced Pro" Release 🎵
 
 ### 🚀 MAJOR RELEASE: AAC+ Streaming & Smart Dependencies

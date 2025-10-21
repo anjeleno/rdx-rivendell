@@ -17,7 +17,7 @@ cd /root/rdx-rivendell
 chmod +x scripts/build-deb-enhanced.sh
 ./scripts/build-deb-enhanced.sh
 
-# Result: rdx-rivendell-enhanced_2.0.0_amd64.deb with EVERYTHING
+# Result: rdx-rivendell-enhanced_2.1.0_amd64.deb with EVERYTHING
 ```
 
 ---
@@ -58,7 +58,7 @@ chmod +x scripts/build-deb-enhanced.sh
 # Build with ALL features enabled
 ./scripts/build-deb-enhanced.sh
 
-# Creates: rdx-rivendell-enhanced_2.0.0_amd64.deb
+# Creates: rdx-rivendell-enhanced_2.1.0_amd64.deb
 # Includes: Core + AAC+ streaming + smart installer
 ```
 
@@ -186,7 +186,7 @@ chmod +x scripts/build-deb-enhanced.sh
 ### **Install Enhanced Package**
 ```bash
 # Install the complete package
-sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+sudo dpkg -i rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 # Fix any dependency issues
 sudo apt-get install -f
@@ -275,7 +275,7 @@ ls -la /tmp/rdx-enhanced-deb-build/rdx-rivendell-enhanced_*/
 ### **Package Files**
 ```bash
 # Enhanced package
-/root/rdx-rivendell/rdx-rivendell-enhanced_2.0.0_amd64.deb
+/root/rdx-rivendell/rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 # Core package  
 /root/rdx-rivendell/rdx-rivendell-core_1.0.0_amd64.deb
@@ -307,10 +307,10 @@ ls -la /tmp/rdx-enhanced-deb-build/rdx-rivendell-enhanced_*/
 ./scripts/build-deb-enhanced.sh \
     --include-gui \
     --package-name rdx-broadcast-pro \
-    --version 2.0.0
+    --version 2.1.0
 
 # Install on broadcast workstation
-sudo dpkg -i rdx-broadcast-pro_2.0.0_amd64.deb
+sudo dpkg -i rdx-broadcast-pro_2.1.0_amd64.deb
 ```
 
 ### **Automation Server**
@@ -350,22 +350,22 @@ ls -la *.deb
 ### **Check Package Contents**
 ```bash
 # List files in package
-dpkg-deb --contents rdx-rivendell-enhanced_2.0.0_amd64.deb
+dpkg-deb --contents rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 # Show package info
-dpkg-deb --info rdx-rivendell-enhanced_2.0.0_amd64.deb
+dpkg-deb --info rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 # Check dependencies
-dpkg-deb --field rdx-rivendell-enhanced_2.0.0_amd64.deb Depends
+dpkg-deb --field rdx-rivendell-enhanced_2.1.0_amd64.deb Depends
 ```
 
 ### **Test Package Installation**
 ```bash
 # Test install without actually installing
-sudo dpkg --dry-run -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+sudo dpkg --dry-run -i rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 # Check for dependency conflicts
-sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb 2>&1 | grep -i "conflict\|error"
+sudo dpkg -i rdx-rivendell-enhanced_2.1.0_amd64.deb 2>&1 | grep -i "conflict\|error"
 ```
 
 ---

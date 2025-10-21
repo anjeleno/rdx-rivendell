@@ -4,13 +4,14 @@
 
 RDX enhances Rivendell v4+ with **broadcast-grade intelligence**: smart hardware detection, automatic audio routing, bulletproof protection for critical connections, and comprehensive AAC+ streaming support. Critical broadcast audio is safe while gaining unprecedented control over complex routing scenarios.
 
-## 🔥 v2.0.0 Enhanced Pro Features
+## 🔥 v2.1.0 Enhanced Pro Features
 
-**NEW in v2.0.0**: Professional AAC+ streaming with HE-AAC v1/v2 support, smart dependency management, and enhanced packaging system.
+**NEW in v2.1.0**: Professional AAC+ streaming with HE-AAC v1/v2 support, smart dependency management, enhanced packaging system, and **fully automated dependency installation**.
 
 - **AAC+ Streaming Engine**: Professional-grade HE-AAC v1/v2 encoding with custom bitrate profiles
 - **Smart Installer**: Automatic detection and installation of missing dependencies
-- **Enhanced Packaging**: Complete .deb package with integrated streaming capabilities
+- **Enhanced Packaging**: Complete .deb package with integrated streaming capabilities  
+- **Automated Installation**: Zero-touch dependency resolution during package install
 - **Professional Profiles**: Optimized settings for talk radio, music, and mixed content
 
 Eliminates the guesswork out of integrating a comprehensive streaming and processing stack into Rivendell. Standards-based. Core functions of streaming and processing are managed directly from RDAdmin, eliminating the need to edit config files in the terminal. Adds native AES67 driver support to Rivendell.
@@ -50,19 +51,20 @@ RDX follows the **Extension Package** approach for maximum compatibility:
 
 ## 🚀 Features
 
-### 🆕 AAC+ Streaming Engine (v2.0.0)
+### 🆕 AAC+ Streaming Engine (v2.1.0)
 - **Professional HE-AAC v1/v2**: High-efficiency encoding for maximum quality at low bitrates
 - **Custom Bitrate Profiles**: Talk radio (32k), music (64k), mixed content (96k), premium (128k)
 - **LC-AAC Support**: Standard AAC encoding for compatibility with all devices
 - **Real-Time Processing**: FFmpeg-powered encoding with JACK audio integration
 - **Automated Stream Setup**: One-command streaming to Icecast or ShoutCast servers
 
-### 🔧 Smart Dependency Manager (v2.0.0)
+### 🔧 Smart Dependency Manager (v2.1.0)
 - **Automatic Detection**: Scans system for missing broadcast audio dependencies
 - **Intelligent Installation**: Installs only required packages based on your hardware
 - **Conflict Prevention**: Avoids installing competing audio systems
 - **Progress Tracking**: Visual feedback during dependency resolution
 - **Rollback Support**: Safe uninstallation with dependency cleanup
+- **Zero-Touch Operation**: Fully automated during package installation
 
 ### 🧠 Intelligent Auto-Routing System
 - **Smart Hardware Detection**: Automatically discovers audio processors (Stereo Tool, Jack Rack, Carla)
@@ -135,14 +137,14 @@ make -j$(nproc)
 
 Watch **intelligent routing in action** - automatic connections with bulletproof protection!
 
-## 🏆 **Current Release: v2.0.0 "Enhanced Pro"**
+## 🏆 **Current Release: v2.1.0 "Enhanced Pro"**
 
 **✅ PRODUCTION READY** - Complete broadcast automation solution:
 
 ### 📦 **Direct Download:**
 ```bash
-wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.0.0/rdx-rivendell-enhanced_2.0.0_amd64.deb
-sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.1.0/rdx-rivendell-enhanced_2.1.0_amd64.deb
+sudo dpkg -i rdx-rivendell-enhanced_2.1.0_amd64.deb
 ```
 
 ### 🚀 **Enhanced Features:**
@@ -162,11 +164,11 @@ sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
 
 ## 📦 Installation
 
-RDX Enhanced v2.0.0 installs as a complete package with AAC+ streaming and smart dependencies:
+RDX Enhanced v2.1.0 installs as a complete package with AAC+ streaming and smart dependencies:
 
 ```bash
 # Install Enhanced Package (includes all features)
-sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+sudo dpkg -i rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 # Auto-install missing dependencies
 sudo rdx-deps --scan --install

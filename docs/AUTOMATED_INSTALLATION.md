@@ -10,8 +10,8 @@ The latest RDX Enhanced package provides **completely automated dependency insta
 
 ```bash
 # Download and install - that's it! 
-wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.0.0/rdx-rivendell-enhanced_2.0.0_amd64.deb
-sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.1.0/rdx-rivendell-enhanced_2.1.0_amd64.deb
+sudo dpkg -i rdx-rivendell-enhanced_2.1.0_amd64.deb
 ```
 
 **What happens automatically:**
@@ -104,13 +104,13 @@ sudo dpkg --configure rdx-rivendell-enhanced
 Complete real-world installation on Ubuntu 22.04:
 
 ```bash
-brandon@studio:~$ wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.0.0/rdx-rivendell-enhanced_2.0.0_amd64.deb
-brandon@studio:~$ sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+brandon@studio:~$ wget https://github.com/anjeleno/rdx-rivendell/releases/download/v2.1.0/rdx-rivendell-enhanced_2.1.0_amd64.deb
+brandon@studio:~$ sudo dpkg -i rdx-rivendell-enhanced_2.1.0_amd64.deb
 
 Selecting previously unselected package rdx-rivendell-enhanced.
-Preparing to unpack rdx-rivendell-enhanced_2.0.0_amd64.deb ...
-Unpacking rdx-rivendell-enhanced (2.0.0) ...
-Setting up rdx-rivendell-enhanced (2.0.0) ...
+Preparing to unpack rdx-rivendell-enhanced_2.1.0_amd64.deb ...
+Unpacking rdx-rivendell-enhanced (2.1.0) ...
+Setting up rdx-rivendell-enhanced (2.1.0) ...
 🔥 Configuring RDX Enhanced (Intelligent Audio + AAC+ Streaming)...
 🧠 Running automated dependency installation...
 📦 Installing missing dependencies automatically...
