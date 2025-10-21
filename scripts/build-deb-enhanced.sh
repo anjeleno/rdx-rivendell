@@ -420,6 +420,24 @@ EOF
     echo "✅ Smart dependency management installed"
 }
 
+# Install complete installation script
+install_complete_installer() {
+    echo "🎯 Installing complete RDX installation script..."
+    
+    # Install the complete installation script
+    if [ -f "${RDX_ROOT}/scripts/rdx-install-complete.sh" ]; then
+        cp "${RDX_ROOT}/scripts/rdx-install-complete.sh" "${PACKAGE_DIR}/usr/local/share/rdx/"
+        chmod +x "${PACKAGE_DIR}/usr/local/share/rdx/rdx-install-complete.sh"
+        
+        # Create convenient symlink
+        ln -sf "/usr/local/share/rdx/rdx-install-complete.sh" "${PACKAGE_DIR}/usr/local/bin/rdx-install"
+        
+        echo "✅ Complete installation script installed as 'rdx-install'"
+    else
+        echo "⚠️  Complete installation script not found - skipping"
+    fi
+}
+
 # Create desktop entries
 create_desktop_entries() {
     echo "🖥️  Creating desktop entries..."
@@ -666,7 +684,12 @@ RDXEOF
         echo "   rdx-deps check                      # Check all dependencies"
         echo "   rdx-deps install                    # Install missing packages"
         echo ""
+        echo "🎯 Complete Integration:"
+        echo "   rdx-install                         # Run complete RDAdmin integration"
+        echo "   rdx-install --verify                # Verify installation"
+        echo ""
         echo "📡 Your system now has WICKED intelligent audio + AAC+ streaming!"
+        echo "💡 For full RDAdmin integration, run: sudo rdx-install"
         ;;
 esac
 
@@ -895,6 +918,7 @@ main() {
     install_core_files
     install_aac_components
     install_smart_components
+    install_complete_installer
     create_desktop_entries
     install_documentation
     create_control_file
