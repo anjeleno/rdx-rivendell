@@ -544,7 +544,8 @@ create_postinst() {
 #!/bin/bash
 # RDX Enhanced post-installation script
 
-set -e
+# Don't use set -e - we want to handle errors gracefully
+# set -e
 
 case "$1" in
     configure)
@@ -616,16 +617,19 @@ RDXEOF
                 echo "   Installing: JACK audio, FFmpeg, multimedia libraries..."
                 
                 # Update package lists first
-                apt-get update -qq || true
+                apt-get update -qq 2>/dev/null || true
                 
-                # Run the smart installer non-interactively
-                DEBIAN_FRONTEND=noninteractive /usr/local/bin/rdx-deps install --auto-yes || {
-                    echo "⚠️  Automatic dependency installation completed with warnings"
-                    echo "   Some packages may need manual configuration"
-                    echo "   Run: sudo rdx-deps install for interactive setup"
-                }
-                
-                echo "✅ Dependency installation complete"
+                # Run the smart installer non-interactively (don't fail package install if this fails)
+                if DEBIAN_FRONTEND=noninteractive /usr/local/bin/rdx-deps install --auto-yes 2>/dev/null; then
+                    echo "✅ Dependencies installed automatically"
+                else
+                    echo "⚠️  Automatic dependency installation had issues"
+                    echo "   You can install missing dependencies manually with:"
+                    echo "   sudo rdx-deps install"
+                    echo ""
+                    echo "   Or install specific packages:"
+                    echo "   sudo apt-get install jackd2 ffmpeg cmake pkg-config"
+                fi
             else
                 echo "✅ All dependencies already satisfied"
             fi
