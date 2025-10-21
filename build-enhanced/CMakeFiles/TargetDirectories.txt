@@ -12,6 +12,7 @@
 /root/rdx-rivendell/build-enhanced/src/rdx-jack/CMakeFiles/install/local.dir
 /root/rdx-rivendell/build-enhanced/src/rdx-jack/CMakeFiles/install/strip.dir
 /root/rdx-rivendell/build-enhanced/src/rdx-gui/CMakeFiles/rdx-gui.dir
+/root/rdx-rivendell/build-enhanced/src/rdx-gui/CMakeFiles/rdx-gui-app.dir
 /root/rdx-rivendell/build-enhanced/src/rdx-gui/CMakeFiles/edit_cache.dir
 /root/rdx-rivendell/build-enhanced/src/rdx-gui/CMakeFiles/rebuild_cache.dir
 /root/rdx-rivendell/build-enhanced/src/rdx-gui/CMakeFiles/list_install_components.dir

@@ -21,9 +21,25 @@ RdxJackDialog::RdxJackDialog(RDStation *station, QWidget *parent)
     rdx_service_connected(false),
     auto_update_enabled(true)
 {
+  initializeDialog();
+}
+
+// Standalone constructor (no Rivendell integration)
+RdxJackDialog::RdxJackDialog(QWidget *parent)
+  : RDDialog(parent),
+    rdx_station(nullptr),  // No station for standalone mode
+    rdx_service_connected(false),
+    auto_update_enabled(true)
+{
+  initializeDialog();
+}
+
+void RdxJackDialog::initializeDialog()
+{
   setMinimumWidth(800);
   setMinimumHeight(600);
-  setWindowTitle("RDX - Intelligent Audio Routing Control");
+  setWindowTitle(rdx_station ? "RDX - Intelligent Audio Routing Control" : 
+                              "RDX - Intelligent Audio Routing Control (Standalone)");
   
   // Setup main layout
   QVBoxLayout *main_layout = new QVBoxLayout(this);

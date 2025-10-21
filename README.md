@@ -1,14 +1,21 @@
 # RDX - Rivendell Extended
 
-**Professional broadcast audio system with intelligent routing and critical connection protection**
+**Professional broadcast audio system with intelligent routing and advanced streaming capabilities**
 
-RDX enhances Rivendell v4+ with **broadcast-grade intelligence**: smart hardware detection, automatic audio routing, and bulletproof protection for critical connections. Critical broadcast audio is safe while gaining unprecedented control over complex routing scenarios. 
+RDX enhances Rivendell v4+ with **broadcast-grade intelligence**: smart hardware detection, automatic audio routing, bulletproof protection for critical connections, and comprehensive AAC+ streaming support. Critical broadcast audio is safe while gaining unprecedented control over complex routing scenarios.
 
-Eliminates the guesswork out of integrating a comprehensive streaming and processing stack into Rivendell. Standards-based. Core functions of streaming and processing are managed directly from RDAdmin, eliminating the need to edit config files in the terminal. Adds native AES67 driver support to Rivendell. 
+## 🔥 v2.0.0 Enhanced Pro Features
 
-Virtualizes and replaces expensive outboard gear used for remote broadcasts. Example: set up an Azuracast server as a remote-relay server. Use BUTT as a streaming source on-site at a live broadcast to connect to the relay server. Connect to the relay stream as an ordinary listener with VLC. VLC captures live audio and routes over Jack to the Rivendell record inputs to pass through live remote broadcast audio.
+**NEW in v2.0.0**: Professional AAC+ streaming with HE-AAC v1/v2 support, smart dependency management, and enhanced packaging system.
 
-## 🎯 Project Objective:
+- **AAC+ Streaming Engine**: Professional-grade HE-AAC v1/v2 encoding with custom bitrate profiles
+- **Smart Installer**: Automatic detection and installation of missing dependencies
+- **Enhanced Packaging**: Complete .deb package with integrated streaming capabilities
+- **Professional Profiles**: Optimized settings for talk radio, music, and mixed content
+
+Eliminates the guesswork out of integrating a comprehensive streaming and processing stack into Rivendell. Standards-based. Core functions of streaming and processing are managed directly from RDAdmin, eliminating the need to edit config files in the terminal. Adds native AES67 driver support to Rivendell.
+
+Virtualizes and replaces expensive outboard gear used for remote broadcasts. Example: set up an Azuracast server as a remote-relay server. Use BUTT as a streaming source on-site at a live broadcast to connect to the relay server. Connect to the relay stream as an ordinary listener with VLC. VLC captures live audio and routes over Jack to the Rivendell record inputs to pass through live remote broadcast audio.## 🎯 Project Objective:
 
 RDX extends Rivendell's core functionality with modular management of streaming, processing, rotuing of AES67, Jack aware applcations. With smart codec and stream buidling. Feels like a native Rivendell application, but safe to install/uninstall without disrupting mission critical audio. 
 
@@ -42,6 +49,20 @@ RDX follows the **Extension Package** approach for maximum compatibility:
 - **rdx-packaging**: Clean .deb installation that extends existing Rivendell
 
 ## 🚀 Features
+
+### 🆕 AAC+ Streaming Engine (v2.0.0)
+- **Professional HE-AAC v1/v2**: High-efficiency encoding for maximum quality at low bitrates
+- **Custom Bitrate Profiles**: Talk radio (32k), music (64k), mixed content (96k), premium (128k)
+- **LC-AAC Support**: Standard AAC encoding for compatibility with all devices
+- **Real-Time Processing**: FFmpeg-powered encoding with JACK audio integration
+- **Automated Stream Setup**: One-command streaming to Icecast or ShoutCast servers
+
+### 🔧 Smart Dependency Manager (v2.0.0)
+- **Automatic Detection**: Scans system for missing broadcast audio dependencies
+- **Intelligent Installation**: Installs only required packages based on your hardware
+- **Conflict Prevention**: Avoids installing competing audio systems
+- **Progress Tracking**: Visual feedback during dependency resolution
+- **Rollback Support**: Safe uninstallation with dependency cleanup
 
 ### 🧠 Intelligent Auto-Routing System
 - **Smart Hardware Detection**: Automatically discovers audio processors (Stereo Tool, Jack Rack, Carla)
@@ -116,8 +137,13 @@ Watch **intelligent routing in action** - automatic connections with bulletproof
 
 ## � **Current Release: v1.0.0 "WICKED"**
 
-**✅ FULLY FUNCTIONAL** - Ready for production broadcast environments:
+## 🏆 **Current Release: v2.0.0 "Enhanced Pro"**
 
+**✅ PRODUCTION READY** - Complete broadcast automation solution:
+
+- **🆕 AAC+ Streaming Engine**: Professional HE-AAC v1/v2 encoding with custom profiles
+- **🆕 Smart Dependency Manager**: Automatic detection and installation of missing packages  
+- **🆕 Enhanced Packaging**: Complete .deb package with integrated streaming capabilities
 - **🧠 Intelligent Auto-Routing**: VLC auto-connects, smart input switching, conflict prevention
 - **🛡️ Critical Connection Protection**: Broadcast-safe operations, never interrupts live audio
 - **🎛️ Profile-Based Control**: Live, production, automation profiles with one-command setup
@@ -125,18 +151,28 @@ Watch **intelligent routing in action** - automatic connections with bulletproof
 - **⚡ Real-Time Management**: Live JACK monitoring, instant routing adaptation
 - **📦 Professional Deployment**: Multi-target installation for any Rivendell system
 
-**🚀 Install on existing Rivendell systems or integrate with rivendell-installer!**
+**🚀 Complete broadcast solution with AAC+ streaming - install on existing Rivendell systems!**
 
 ## �📦 Installation
 
-RDX installs as an extension package that enhances existing Rivendell installations:
+## 📦 Installation
+
+RDX Enhanced v2.0.0 installs as a complete package with AAC+ streaming and smart dependencies:
 
 ```bash
-# Install RDX (depends on rivendell package)  
-sudo dpkg -i rdx-rivendell_1.0.0_amd64.deb
+# Install Enhanced Package (includes all features)
+sudo dpkg -i rdx-rivendell-enhanced_2.0.0_amd64.deb
+
+# Auto-install missing dependencies
+sudo rdx-deps --scan --install
 
 # Start intelligent routing service
 sudo systemctl enable rdx-jack-helper
+sudo systemctl start rdx-jack-helper
+
+# Launch RDAdmin - new "Advanced Audio" button appears
+rdadmin
+```
 sudo systemctl start rdx-jack-helper
 
 # Launch RDAdmin - new "Advanced Audio" button appears

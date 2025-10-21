@@ -38,6 +38,7 @@ class RdxJackDialog : public RDDialog
  Q_OBJECT
  public:
   RdxJackDialog(RDStation *station, QWidget *parent=0);
+  RdxJackDialog(QWidget *parent=0);  // Standalone constructor
   QSize sizeHint() const;
   QSizePolicy sizePolicy() const;
 
@@ -70,6 +71,13 @@ class RdxJackDialog : public RDDialog
   void removeCriticalConnection(); 
   void editCriticalConnection();
   
+  // AAC+ Streaming Management
+  void startAACStream();
+  void stopAACStream();
+  void configureAACStream();
+  void testAACStream();
+  void updateStreamStatus();
+  
   // Real-time Updates
   void updateStatus();
   void updateConnections();
@@ -96,6 +104,7 @@ class RdxJackDialog : public RDDialog
   void setupServicesTab();
   void setupConnectionsTab();
   void setupMonitoringTab();
+  void setupStreamingTab();
   void setupAdvancedTab();
   
   void updateProfileUI();
@@ -103,6 +112,9 @@ class RdxJackDialog : public RDDialog
   void updateServicesUI();
   void updateConnectionsUI();
   void updateMonitoringUI();
+  void updateStreamingUI();
+  
+  void initializeDialog();  // Shared initialization method
   
   bool connectToRdxService();
   void disconnectFromRdxService();
@@ -157,6 +169,19 @@ class RdxJackDialog : public RDDialog
   QPushButton *scan_button;
   QPushButton *emergency_button;
   
+  // AAC+ Streaming Tab
+  QGroupBox *streaming_group;
+  QLineEdit *stream_url_edit;
+  QSpinBox *stream_bitrate_spin;
+  QComboBox *stream_format_combo;
+  QComboBox *stream_quality_combo;
+  QPushButton *stream_start_button;
+  QPushButton *stream_stop_button;
+  QPushButton *stream_test_button;
+  QLabel *stream_status_label;
+  QTextEdit *stream_log_edit;
+  QCheckBox *stream_auto_reconnect_check;
+  
   // Advanced Tab
   QGroupBox *advanced_group;
   QCheckBox *auto_routing_check;
@@ -184,6 +209,9 @@ class RdxJackDialog : public RDDialog
   // Status tracking
   bool rdx_service_connected;
   bool auto_update_enabled;
+  bool aac_stream_active;
+  QString current_stream_url;
+  int stream_process_id;
 };
 
 #endif // RDX_JACK_DIALOG_H

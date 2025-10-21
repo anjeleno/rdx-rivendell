@@ -82,6 +82,7 @@ clean: src/rdx-gui/clean
 
 # Recursive "all" directory target.
 src/rdx-gui/all: src/rdx-gui/CMakeFiles/rdx-gui.dir/all
+src/rdx-gui/all: src/rdx-gui/CMakeFiles/rdx-gui-app.dir/all
 .PHONY : src/rdx-gui/all
 
 # Recursive "preinstall" directory target.
@@ -90,6 +91,7 @@ src/rdx-gui/preinstall:
 
 # Recursive "clean" directory target.
 src/rdx-gui/clean: src/rdx-gui/CMakeFiles/rdx-gui.dir/clean
+src/rdx-gui/clean: src/rdx-gui/CMakeFiles/rdx-gui-app.dir/clean
 .PHONY : src/rdx-gui/clean
 
 #=============================================================================
@@ -114,7 +116,7 @@ src/rdx-jack/clean: src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/clean
 src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/all:
 	$(MAKE) $(MAKESILENT) -f src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/build.make src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/depend
 	$(MAKE) $(MAKESILENT) -f src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/build.make src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/rdx-rivendell/build-enhanced/CMakeFiles --progress-num=4,5,6,7,8,9,10,11 "Built target rdx-jack-helper"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/rdx-rivendell/build-enhanced/CMakeFiles --progress-num=6,7,8,9,10,11,12,13 "Built target rdx-jack-helper"
 .PHONY : src/rdx-jack/CMakeFiles/rdx-jack-helper.dir/all
 
 # Build rule for subdir invocation for target.
@@ -158,6 +160,32 @@ rdx-gui: src/rdx-gui/CMakeFiles/rdx-gui.dir/rule
 src/rdx-gui/CMakeFiles/rdx-gui.dir/clean:
 	$(MAKE) $(MAKESILENT) -f src/rdx-gui/CMakeFiles/rdx-gui.dir/build.make src/rdx-gui/CMakeFiles/rdx-gui.dir/clean
 .PHONY : src/rdx-gui/CMakeFiles/rdx-gui.dir/clean
+
+#=============================================================================
+# Target rules for target src/rdx-gui/CMakeFiles/rdx-gui-app.dir
+
+# All Build rule for target.
+src/rdx-gui/CMakeFiles/rdx-gui-app.dir/all: src/rdx-gui/CMakeFiles/rdx-gui.dir/all
+	$(MAKE) $(MAKESILENT) -f src/rdx-gui/CMakeFiles/rdx-gui-app.dir/build.make src/rdx-gui/CMakeFiles/rdx-gui-app.dir/depend
+	$(MAKE) $(MAKESILENT) -f src/rdx-gui/CMakeFiles/rdx-gui-app.dir/build.make src/rdx-gui/CMakeFiles/rdx-gui-app.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/rdx-rivendell/build-enhanced/CMakeFiles --progress-num=4,5 "Built target rdx-gui-app"
+.PHONY : src/rdx-gui/CMakeFiles/rdx-gui-app.dir/all
+
+# Build rule for subdir invocation for target.
+src/rdx-gui/CMakeFiles/rdx-gui-app.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /root/rdx-rivendell/build-enhanced/CMakeFiles 5
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/rdx-gui/CMakeFiles/rdx-gui-app.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /root/rdx-rivendell/build-enhanced/CMakeFiles 0
+.PHONY : src/rdx-gui/CMakeFiles/rdx-gui-app.dir/rule
+
+# Convenience name for target.
+rdx-gui-app: src/rdx-gui/CMakeFiles/rdx-gui-app.dir/rule
+.PHONY : rdx-gui-app
+
+# clean rule for target.
+src/rdx-gui/CMakeFiles/rdx-gui-app.dir/clean:
+	$(MAKE) $(MAKESILENT) -f src/rdx-gui/CMakeFiles/rdx-gui-app.dir/build.make src/rdx-gui/CMakeFiles/rdx-gui-app.dir/clean
+.PHONY : src/rdx-gui/CMakeFiles/rdx-gui-app.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

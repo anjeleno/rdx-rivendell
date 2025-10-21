@@ -14,6 +14,15 @@
 # EXTERNAL cache entries
 ########################
 
+//Path to a library.
+AVCODEC_LIBRARY:FILEPATH=AVCODEC_LIBRARY-NOTFOUND
+
+//Path to a library.
+AVFORMAT_LIBRARY:FILEPATH=AVFORMAT_LIBRARY-NOTFOUND
+
+//Path to a library.
+AVUTIL_LIBRARY:FILEPATH=AVUTIL_LIBRARY-NOTFOUND
+
 //Path to a program.
 CMAKE_ADDR2LINE:FILEPATH=/usr/bin/addr2line
 
@@ -22,7 +31,7 @@ CMAKE_AR:FILEPATH=/usr/bin/ar
 
 //Choose the type of build, options are: None Debug Release RelWithDebInfo
 // MinSizeRel ...
-CMAKE_BUILD_TYPE:STRING=
+CMAKE_BUILD_TYPE:STRING=Release
 
 //Enable/Disable color output during build.
 CMAKE_COLOR_MAKEFILE:BOOL=ON
@@ -230,11 +239,44 @@ CMAKE_TAPI:FILEPATH=CMAKE_TAPI-NOTFOUND
 // Studio IDE projects all commands are done without /nologo.
 CMAKE_VERBOSE_MAKEFILE:BOOL=FALSE
 
+//Path to a library.
+COVERARTARCHIVE_LIBRARY:FILEPATH=COVERARTARCHIVE_LIBRARY-NOTFOUND
+
+//Path to a library.
+CRYPTO_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libcrypto.so
+
+//Path to a library.
+CURL_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libcurl.so
+
+//Path to a library.
+DISCID_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libdiscid.so
+
+//Path to a library.
+FLACPP_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libFLAC++.so
+
+//Path to a library.
+FLAC_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libFLAC.so
+
 //Build GUI components
 GUI_SUPPORT:BOOL=ON
 
+//Path to a library.
+ID3_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libid3.so
+
 //Build JACK components
 JACK_SUPPORT:BOOL=ON
+
+//Path to a library.
+MAGICKPP_LIBRARY:FILEPATH=MAGICKPP_LIBRARY-NOTFOUND
+
+//Path to a library.
+MUSICBRAINZ5_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libmusicbrainz5.so
+
+//Path to a library.
+OGG_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libogg.so
+
+//Path to a library.
+PAM_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libpam.so
 
 //Arguments to supply to pkg-config
 PKG_CONFIG_ARGN:STRING=
@@ -254,6 +296,9 @@ Qt5Gui_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5Gui
 //The directory containing a CMake configuration file for Qt5Network.
 Qt5Network_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5Network
 
+//The directory containing a CMake configuration file for Qt5Sql.
+Qt5Sql_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5Sql
+
 //The directory containing a CMake configuration file for Qt5Widgets.
 Qt5Widgets_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5Widgets
 
@@ -264,13 +309,52 @@ Qt5_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/Qt5
 RDCONF_LIB:FILEPATH=RDCONF_LIB-NOTFOUND
 
 //Path to a library.
+RDCONF_LIBRARY:FILEPATH=RDCONF_LIBRARY-NOTFOUND
+
+//Path to a library.
 RD_LIB:FILEPATH=/usr/lib/librd.so
+
+//Path to a library.
+RD_LIBRARY:FILEPATH=/usr/lib/librd.so
 
 //Path to a file.
 RIVENDELL_API_INCLUDE_DIR:PATH=/usr/include
 
 //Build with Rivendell Web API support
 RIVENDELL_API_SUPPORT:BOOL=ON
+
+//Path to a library.
+SNDFILE_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libsndfile.so
+
+//Path to a library.
+SOUNDTOUCH_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libSoundTouch.so
+
+//Path to a library.
+SRC_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libsamplerate.so
+
+//Path to a library.
+SSL_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libssl.so
+
+//Path to a library.
+SWRESAMPLE_LIBRARY:FILEPATH=SWRESAMPLE_LIBRARY-NOTFOUND
+
+//Path to a library.
+SWSCALE_LIBRARY:FILEPATH=SWSCALE_LIBRARY-NOTFOUND
+
+//Path to a library.
+TAG_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libtag.so
+
+//Path to a library.
+VORBISENC_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libvorbisenc.so
+
+//Path to a library.
+VORBISFILE_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libvorbisfile.so
+
+//Path to a library.
+VORBIS_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libvorbis.so
+
+//Path to a library.
+X264_LIBRARY:FILEPATH=X264_LIBRARY-NOTFOUND
 
 //Path to a library.
 pkgcfg_lib_ALSA_asound:FILEPATH=/usr/lib/x86_64-linux-gnu/libasound.so

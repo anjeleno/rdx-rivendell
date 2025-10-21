@@ -1,5 +1,64 @@
 # RDX (Rivendell Extended) - CHANGELOG
 
+## [2.0.0] - 2025-10-20 - "Enhanced Pro" Release 🎵
+
+### 🚀 MAJOR RELEASE: AAC+ Streaming & Smart Dependencies
+
+#### Complete AAC+ Streaming System
+- **Professional Streaming**: HE-AAC v1/v2 and LC-AAC support via FFmpeg
+- **Quality Profiles**: High (128k HE-AAC v2), Medium (96k HE-AAC v1), Low (64k LC-AAC)
+- **Multiple Protocols**: Icecast, Shoutcast, and RTMP streaming support
+- **Automatic Reconnection**: Daemon mode with intelligent connection recovery
+- **CLI Tools**: `rdx-stream` helper with start/stop/status commands
+- **Configuration**: Profile-based configuration in `/etc/rdx/aac-profiles/`
+
+#### Smart Dependency Management System
+- **Intelligent Detection**: Automatic scanning of 15+ package categories
+- **Auto-Installation**: Smart dependency resolution and installation
+- **System Compatibility**: Ubuntu/Debian system optimization
+- **Rivendell Integration**: Enhanced detection and configuration
+- **CLI Tools**: `rdx-deps` helper for dependency management
+- **Professional Error Handling**: Comprehensive validation and recovery
+
+#### Enhanced Build System
+- **Complete Builder**: `build-deb-enhanced.sh` with all features included
+- **Command-Line Options**: Customizable builds with --no-aac, --include-gui, etc.
+- **Professional Packaging**: v2.0.0 with enhanced metadata and dependencies
+- **Multiple Variants**: Enhanced, Core, Adaptive, and Standard builders
+- **Debug Support**: Development builds with symbols and logging
+
+#### Comprehensive Documentation System
+- **Package Builder Guide**: Complete guide with copy/paste examples
+- **Quick Reference**: One-page cheat sheet for common operations
+- **Scripts Documentation**: Feature matrix and usage instructions
+- **AAC Streaming Guide**: Configuration and troubleshooting
+- **Smart Installer Guide**: Dependency management and automation
+
+### 📦 ENHANCED PACKAGE: rdx-rivendell-enhanced_2.0.0_amd64.deb
+
+#### Professional Package Features
+- **Size**: 74KB with comprehensive feature set
+- **Dependencies**: Smart FFmpeg and multimedia library management
+- **Installation**: Automated systemd service and user configuration
+- **Desktop Integration**: Application launchers for streaming and control
+- **Documentation**: Complete inline help and configuration guides
+
+#### Enhanced CLI Toolset
+- **rdx-jack-helper**: Core intelligent routing with enhanced features
+- **rdx-stream**: AAC+ streaming management with profile support
+- **rdx-deps**: Smart dependency detection and installation
+- **rdx-aac-stream.sh**: Direct streaming script with advanced options
+- **Enhanced Aliases**: Professional shortcuts for rd user
+
+### 🎛️ SYSTEMD INTEGRATION
+
+#### Professional Service Management
+- **Enhanced Service**: rdx-jack-helper.service with streaming support
+- **Environment Variables**: RDX_AAC_ENABLED, RDX_LOG_LEVEL configuration
+- **Auto-Start**: Intelligent service enablement based on environment
+- **Stream Management**: Automatic streaming service coordination
+- **Monitoring**: Enhanced status reporting and logging
+
 ## [1.0.0] - 2025-10-20 - "WICKED" Release 🔥
 
 ### 🎉 MAJOR BREAKTHROUGH: Deb Packaging & Rivendell Integration

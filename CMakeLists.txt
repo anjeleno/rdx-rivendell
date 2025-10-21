@@ -24,10 +24,10 @@ endif()
 # Find ALSA (for device discovery)
 pkg_check_modules(ALSA REQUIRED alsa)
 
-# Find Qt5 Widgets for GUI
+# Find Qt5 Widgets and SQL for GUI
 if(GUI_SUPPORT)
-    find_package(Qt5 REQUIRED COMPONENTS Widgets)
-    message(STATUS "GUI support enabled - Qt5 Widgets found")
+    find_package(Qt5 REQUIRED COMPONENTS Widgets Sql)
+    message(STATUS "GUI support enabled - Qt5 Widgets and SQL found")
 endif()
 
 # Find Rivendell Web API for professional integration
@@ -106,7 +106,7 @@ if(JACK_SUPPORT)
 endif()
 
 if(GUI_SUPPORT)
-    include_directories(${Qt5Widgets_INCLUDE_DIRS})
+    include_directories(${Qt5Widgets_INCLUDE_DIRS} ${Qt5Sql_INCLUDE_DIRS})
 endif()
 
 # Compiler flags
@@ -117,7 +117,7 @@ if(JACK_SUPPORT)
 endif()
 
 if(GUI_SUPPORT)
-    add_compile_options(${Qt5Widgets_CFLAGS})
+    add_compile_options(${Qt5Widgets_CFLAGS} ${Qt5Sql_CFLAGS})
 endif()
 
 # Define JACK support
