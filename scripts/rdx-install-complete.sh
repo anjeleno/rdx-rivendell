@@ -20,7 +20,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-RDX_VERSION="2.2.0"
+RDX_VERSION="2.4.0"
 RDX_HOME="/opt/rdx"
 RDX_CONFIG="/etc/rdx"
 RIVENDELL_CONFIG="/etc/rd.conf"
@@ -119,20 +119,18 @@ detect_audio_system() {
 install_dependencies() {
     log_header "Installing Dependencies"
     
-    # Core dependencies
+    # Core dependencies (be conservative to avoid Rivendell conflicts)
     local deps=(
         "jackd2"
-        "jack-tools"
+        "jack-tools" 
         "qjackctl"
         "libjack-jackd2-dev"
         "ffmpeg"
         "libavcodec-extra"
-        "qt5-default"
         "libqt5widgets5"
         "libqt5sql5-mysql"
         "mysql-client"
         "alsa-utils"
-        "pulseaudio-module-jack"
     )
     
     log_info "Updating package lists..."
@@ -150,6 +148,14 @@ install_dependencies() {
             log_success "$dep already installed"
         fi
     done
+    
+    # Check for potential Rivendell conflicts and warn
+    log_info "Checking for potential audio conflicts..."
+    if systemctl is-active --quiet rivendell; then
+        log_success "Rivendell service is running - safe to continue"
+    else
+        log_warning "Rivendell service not running - this is normal during installation"
+    fi
 }
 
 ##############################################################################
@@ -166,21 +172,31 @@ install_rdx_core() {
     mkdir -p /var/log/rdx
     mkdir -p /var/run/rdx
     
-    # Install main executable
-    log_info "Installing RDX executable..."
-    if [ -f "./rdx-jack" ]; then
+    # Install main executable (check if already installed by .deb package)
+    log_info "Checking RDX executable installation..."
+    if [ -f "/usr/local/bin/rdx-jack-helper" ]; then
+        cp "/usr/local/bin/rdx-jack-helper" "$RDX_HOME/bin/rdx-jack"
+        chmod +x "$RDX_HOME/bin/rdx-jack"
+        log_success "RDX executable installed from package"
+    elif [ -f "./rdx-jack" ]; then
         cp ./rdx-jack "$RDX_HOME/bin/"
         chmod +x "$RDX_HOME/bin/rdx-jack"
-        log_success "RDX executable installed"
+        log_success "RDX executable installed from source"
     else
-        log_error "RDX executable not found - please build first"
+        log_error "RDX executable not found - package may not be properly installed"
+        log_info "Please ensure rdx-rivendell-enhanced package is installed first"
         exit 1
     fi
     
-    # Install GUI library if available
-    if [ -f "./librdx-gui.a" ]; then
+    # Install GUI library if available (check package installation first)
+    if [ -f "/usr/local/share/rdx/librdx-gui.a" ]; then
+        cp "/usr/local/share/rdx/librdx-gui.a" "$RDX_HOME/lib/"
+        log_success "RDX GUI library installed from package"
+    elif [ -f "./librdx-gui.a" ]; then
         cp ./librdx-gui.a "$RDX_HOME/lib/"
-        log_success "RDX GUI library installed"
+        log_success "RDX GUI library installed from source"
+    else
+        log_warning "RDX GUI library not found - basic functionality only"
     fi
     
     # Install configuration templates

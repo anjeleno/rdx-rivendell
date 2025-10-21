@@ -773,7 +773,12 @@ RDXEOF
         echo "   rdx-install --verify                # Verify installation"
         echo ""
         echo "📡 Your system now has WICKED intelligent audio + AAC+ streaming!"
-        echo "💡 For full RDAdmin integration, run: sudo rdx-install"
+        echo ""
+        echo "� IMPORTANT: For RDAdmin integration, you MUST run:"
+        echo "   sudo rdx-install"
+        echo ""
+        echo "   This safely integrates RDX with your existing Rivendell database"
+        echo "   and adds the '🔥 RDX Audio Control' button to RDAdmin interface."
         ;;
 esac
 
