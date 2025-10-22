@@ -1,5 +1,26 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.1 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed config directory fallback causing files to save in `~/.rdx` instead of `~/.config/rdx`
+- **CRITICAL**: Fixed stream persistence between tabs using JSON storage instead of in-memory references
+- **CRITICAL**: Eliminated config directory ownership confusion - no more root:root directories
+- **IMPROVED**: Icecast Management now reads streams from persistent storage, not parent tab references
+- **ENHANCED**: Forced use of standard config directory `~/.config/rdx` - no confusing fallbacks
+
+### Major Technical Improvements
+- **Persistent Stream Storage**: Streams saved to `~/.config/rdx/streams.json` and loaded consistently
+- **Unified Config Path**: All config files now use `~/.config/rdx/` directory exclusively
+- **Cross-Tab Communication**: Icecast Management reads from JSON storage, not runtime parent references
+- **Proper Ownership**: Config directories created with correct user:user ownership from start
+- **Error Prevention**: Eliminated fallback to `~/.rdx` that caused path confusion
+
+### Fixed Workflow
+1. **Stream Builder**: Add streams → Auto-saved to `~/.config/rdx/streams.json`
+2. **Icecast Management**: Reads streams from JSON storage → Generates correct configs
+3. **Deployment**: Creates configs in `~/.config/rdx/` with proper ownership
+4. **Result**: Streams appear correctly in Icecast config with proper mount points
+
 ## v3.2.0 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed config files not being generated (Liquidsoap and Icecast)
