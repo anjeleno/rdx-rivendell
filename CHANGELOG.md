@@ -1,5 +1,13 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.13 (2025-10-22)
+### Fixed
+- Hotfix: Resolved IndentationError in main window constructor (`__init__`) causing startup failure
+- Version strings aligned across title bar, status bar, and application metadata
+
+### Packaging
+- Builder script version bumped to 3.2.13
+
 ## v3.2.12 (2025-10-22)
 ### Fixed
 - Liquidsoap: eliminate NameError during Start by importing `re` at module scope
