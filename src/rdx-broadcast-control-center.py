@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.18
+RDX Professional Broadcast Control Center v3.2.19
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1431,63 +1431,6 @@ class ServiceControlTab(QWidget):
             QMessageBox.critical(self, "Service Start Error",
                                  f"Error starting {service_info['name']}:\n{str(e)}")
 
-                # Parse-check Liquidsoap config before launching
-                check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
-                if check.returncode != 0:
-                    # Attempt auto-fix then strict fix as needed
-                    orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
-                    self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
-                    if check2.returncode != 0:
-                        self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
-                        if check3.returncode != 0:
-                            msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
-                            msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
-                            QMessageBox.critical(self, "Liquidsoap Config Error",
-                                                 f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
-                            return
-                
-                if config_file.exists():
-                    try:
-                        log_fh = open(log_file, "a", buffering=1)
-                    except Exception:
-                        log_fh = None
-                    try:
-                        subprocess.Popen(["liquidsoap", str(config_file)],
-                                         stdout=log_fh or subprocess.DEVNULL,
-                                         stderr=log_fh or subprocess.DEVNULL,
-                                         start_new_session=True)
-                        QMessageBox.information(self, "Liquidsoap Restarted", 
-                                                f"Liquidsoap restarted with config: {config_file}\n\n"
-                                                f"Logs: {log_file}")
-                    except Exception as e:
-                        if log_fh:
-                            log_fh.close()
-                        QMessageBox.critical(self, "Liquidsoap Restart Error", 
-                                             f"Failed to launch Liquidsoap:\n{e}")
-                        return
-                    if log_fh:
-                        try:
-                            log_fh.close()
-                        except Exception:
-                            pass
-                else:
-                    QMessageBox.warning(self, "No Config", 
-                                      "Please generate Liquidsoap configuration first in Stream Builder tab.")
-                    
-            else:
-                # For other services, use systemctl
-                subprocess.run(["systemctl", "restart", service_info['systemd']], check=True)
-                QMessageBox.information(self, f"{service_info['name']} Restarted", 
-                                      f"{service_info['name']} service restarted successfully.")
-                
-        except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self, "Service Restart Failed", 
-                               f"Failed to restart {service_info['name']}:\n{str(e)}")
-        except Exception as e:
-            QMessageBox.critical(self, "Service Restart Error", 
-                               f"Error restarting {service_info['name']}:\n{str(e)}")
                 
     def stop_service(self, service_key):
         """Stop a specific service automatically"""
@@ -1847,7 +1790,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.18")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.19")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1894,7 +1837,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.18")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.19")
 
 
 def main():
@@ -1902,7 +1845,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.18")
+    app.setApplicationVersion("3.2.19")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

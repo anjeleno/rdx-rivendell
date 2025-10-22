@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.19 (2025-10-22)
+### Fixed
+- Residual indentation errors after 3.2.18 cleanup: removed stray duplicated block after `start_service()` and repaired mis-indented lines in main window
+
+### Notes
+- No functional changes beyond syntax fixes; retains guided FFmpeg plugin installer and preflight sanitizers
+
 ## v3.2.18 (2025-10-22)
 ### Fixed
 - Resolved Python SyntaxError/indentation issues introduced during installer integration
