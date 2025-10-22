@@ -1,5 +1,33 @@
 # RDX (Rivendell Extended) - CHANGELOG
 
+## [3.1.4] - 2025-10-22 - "Syntax Error Fix" Release 🐛
+
+### 🐛 CRITICAL SYNTAX ERROR FIX
+
+#### Python SyntaxError Elimination
+- **FIXED**: `SyntaxError: invalid decimal literal at line 1330`
+- **CAUSE**: Broken CSS triple-quoted string and leftover guidance message fragments
+- **SOLUTION**: Clean Python syntax with safe string concatenation
+- **RESULT**: Application now starts without syntax errors
+
+#### Code Cleanup
+- **CSS Strings**: Replaced problematic triple-quoted CSS with single-line concatenation
+- **Leftover Text**: Removed stray guidance message fragments causing syntax errors
+- **Encoding Issues**: Eliminated emoji characters causing encoding problems
+- **Syntax Validation**: Full codebase syntax validation and cleanup
+
+#### Technical Improvements
+- **Safe Strings**: No more unterminated or broken triple-quoted strings
+- **Clean Code**: Proper Python syntax throughout entire codebase
+- **Encoding**: UTF-8 safe character handling
+- **Validation**: Source and installed files compile without errors
+
+### ✅ **Validation Results**
+- **Source File**: Compiles cleanly with `ast.parse()`
+- **Installed App**: No syntax errors during Python compilation
+- **Functionality**: All features preserved from v3.1.3
+- **Startup**: Application launches properly without crashes
+
 ## [3.1.3] - 2025-10-22 - "Critical Bug Fixes" Release 🚑
 
 ### 🚑 CRITICAL FIXES
