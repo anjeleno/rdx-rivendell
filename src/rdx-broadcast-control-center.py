@@ -1406,7 +1406,10 @@ class ServiceControlTab(QWidget):
                     if plugin_check.returncode != 0:
                         QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
                                              "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
-                                             "Install it with:\n  sudo apt install liquidsoap-plugin-ffmpeg\n\n"
+                                             "Install one of the following (varies by distro):\n"
+                                             "  sudo apt install liquidsoap-plugin-ffmpeg\n"
+                                             "  sudo apt install liquidsoap-plugin-all\n"
+                                             "  sudo apt install liquidsoap-plugin-extra\n\n"
                                              "Then try starting Liquidsoap again.")
                         return
                 except Exception:
@@ -1537,7 +1540,10 @@ class ServiceControlTab(QWidget):
                     if plugin_check.returncode != 0:
                         QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
                                              "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
-                                             "Install it with:\n  sudo apt install liquidsoap-plugin-ffmpeg\n\n"
+                                             "Install one of the following (varies by distro):\n"
+                                             "  sudo apt install liquidsoap-plugin-ffmpeg\n"
+                                             "  sudo apt install liquidsoap-plugin-all\n"
+                                             "  sudo apt install liquidsoap-plugin-extra\n\n"
                                              "Then try restarting Liquidsoap again.")
                         return
                 except Exception:
@@ -1734,7 +1740,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.15")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.16")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1781,7 +1787,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.15")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.16")
 
 
 def main():
@@ -1789,7 +1795,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.15")
+    app.setApplicationVersion("3.2.16")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

@@ -1,12 +1,15 @@
 # RDX Broadcast Control Center Changelog
 
-## v3.2.15 (2025-10-22)
+## v3.2.16 (2025-10-22)
+### Fixed
+- Installation compatibility: Relaxed FFmpeg plugin requirement to avoid “dependency not satisfiable” on distros where that package name isn’t available
+
 ### Improved
-- Dependency assurance: Now declares `liquidsoap (>= 2.0.0)` and `liquidsoap-plugin-ffmpeg` as hard dependencies so apt installs them during app installation
-- UI check: Before starting Liquidsoap, the app detects if the FFmpeg encoder plugin is missing and shows a precise install hint
+- Preflight message now suggests alternative plugin packages: `liquidsoap-plugin-ffmpeg` | `liquidsoap-plugin-all` | `liquidsoap-plugin-extra`
 
 ### Packaging
-- Builder script bumped to 3.2.15 and rebuilt package
+- Depends: `liquidsoap (>= 2.0.0)`; Recommends include plugin alternatives
+- Builder script bumped to 3.2.16 and rebuilt package
 
 ### Packaging
 - Builder script bumped to 3.2.14 and rebuilt package
