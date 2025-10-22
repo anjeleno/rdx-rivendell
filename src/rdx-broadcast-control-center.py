@@ -337,7 +337,7 @@ output.icecast(
   url="{mount_name}",
   name="{stream.get('station_name', 'RDX Station')}",
   description="{stream.get('description', f'{stream["codec"]} stream at {stream["bitrate"]}')}",
-    source=radio
+    radio
 )
 '''
         
@@ -1392,6 +1392,7 @@ class ServiceControlTab(QWidget):
                 
                 # Verify liquidsoap is available
                 import shutil
+                import re
                 if shutil.which("liquidsoap") is None:
                     QMessageBox.critical(self, "Liquidsoap Not Found", 
                                          "The 'liquidsoap' command is not installed or not in PATH.\n"
@@ -1403,6 +1404,15 @@ class ServiceControlTab(QWidget):
                     msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     QMessageBox.critical(self, "Liquidsoap Config Error",
                                          f"Failed to parse Liquidsoap config:\n\n{msg}")
+                    return
+                    # Attempt auto-fix for common issues and re-check once
+                # Sanitize config for common issues (unquoted bitrate, source label)
+                self.sanitize_liquidsoap_config(config_file)
+                check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                if check2.returncode != 0:
+                    msg = (check2.stderr or check2.stdout or "Unknown parse error").strip()
+                    QMessageBox.critical(self, "Liquidsoap Config Error",
+                                         f"Failed to parse Liquidsoap config after auto-fix:\n\n{msg}")
                     return
                 
                 if config_file.exists():
@@ -1513,6 +1523,14 @@ class ServiceControlTab(QWidget):
                     QMessageBox.critical(self, "Liquidsoap Config Error",
                                          f"Failed to parse Liquidsoap config:\n\n{msg}")
                     return
+                # Sanitize config for common issues and re-check
+                self.sanitize_liquidsoap_config(config_file)
+                check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                if check2.returncode != 0:
+                    msg = (check2.stderr or check2.stdout or "Unknown parse error").strip()
+                    QMessageBox.critical(self, "Liquidsoap Config Error",
+                                         f"Failed to parse Liquidsoap config after auto-fix:\n\n{msg}")
+                    return
                 
                 if config_file.exists():
                     try:
@@ -1582,6 +1600,27 @@ class ServiceControlTab(QWidget):
                 temp_dir = Path(tempfile.gettempdir()) / f"rdx-{getpass.getuser()}"
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 return temp_dir
+
+    def sanitize_liquidsoap_config(self, config_file: Path):
+        """Auto-fix common Liquidsoap config issues in-place.
+        - Quote ffmpeg audio_bitrate values: 64k -> "64k"
+        - Replace unsupported 'source=radio' with positional 'radio'
+        """
+        try:
+            txt = config_file.read_text(encoding="utf-8")
+        except Exception:
+            return
+        new = txt
+        # Fix unquoted audio_bitrate values
+        new = re.sub(r'(audio_bitrate\s*=\s*)(\d+k)(\b)', r'\1"\2"', new)
+        # Replace source=radio with positional radio while preserving separators
+        new = re.sub(r'\bsource\s*=\s*radio\s*,', 'radio,', new)
+        new = re.sub(r'\bsource\s*=\s*radio(\s*[)\n])', r'radio\1', new)
+        if new != txt:
+            try:
+                config_file.write_text(new, encoding="utf-8")
+            except Exception:
+                pass
                 
     def configure_service(self, service_key):
         """Configure a specific service"""

@@ -1,5 +1,13 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.11 (2025-10-22)
+### Fixed
+- Liquidsoap: generator uses positional source (radio) again; removed unsupported source= label
+- Auto-sanitize existing configs on start: quote ffmpeg audio_bitrate (e.g., 64k -> "64k"), replace source=radio
+
+### Improved
+- Preflight parse-check still runs; if it fails, the app attempts auto-fix then re-checks and shows any errors
+
 ## v3.2.10 (2025-10-22)
 ### Fixed
 - Liquidsoap: pass stream source explicitly using `source=radio` in `output.icecast(...)` to resolve type mismatch errors in 2.x
