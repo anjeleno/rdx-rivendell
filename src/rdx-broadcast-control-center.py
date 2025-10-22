@@ -1189,9 +1189,6 @@ systemctl --user restart {service_info['systemd']}
 
 This application provides configuration guidance but does not manage system services directly.""")
             msg.exec_()
-                QMessageBox.information(self, "Service Restarted", f"{service_info['name']} service restarted successfully!")
-            except subprocess.CalledProcessError:
-                QMessageBox.critical(self, "Restart Failed", f"Failed to restart {service_info['name']} service.")
                 
     def configure_service(self, service_key):
         """Configure a specific service"""
