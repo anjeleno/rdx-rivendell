@@ -1,18 +1,22 @@
 # RDX Broadcast Control Center Changelog
 
-## v3.2.7 (2025-10-22)
-### Changed
-- Version bump to v3.2.7 and packaging refresh
-
-### Docs
-- Added/updated changelog entries for v3.2.4–v3.2.6
-
 ## v3.2.8 (2025-10-22)
 ### Fixed
 - Liquidsoap AAC encoder config: replaced unsupported `%aac(...)` with widely-supported ffmpeg-based AAC encoder
 
 ### Packaging
 - Recommend `liquidsoap-plugin-ffmpeg` to ensure AAC encoding availability by default
+
+### Installer/Docs
+- Installer now installs `liquidsoap-plugin-ffmpeg` by default on Debian/Ubuntu
+- In-app guidance updated to suggest installing `liquidsoap-plugin-ffmpeg`
+
+## v3.2.7 (2025-10-22)
+### Changed
+- Version bump to v3.2.7 and packaging refresh
+
+### Docs
+- Added/updated changelog entries for v3.2.4–v3.2.6
 
 ## v3.2.6 (2025-10-22)
 ### Fixed
