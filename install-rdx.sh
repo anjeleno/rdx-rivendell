@@ -201,65 +201,10 @@ post_install_setup() {
         print_status "User 'rd' already exists"
     fi
     
-    # Add rd user to audio and pulse-access groups
-    print_info "Configuring user permissions..."
+    # Add rd user to audio and pulse-access groups only
+    print_info "Configuring audio permissions..."
     sudo usermod -a -G audio,pulse-access rd 2>/dev/null || true
-    
-    # Add sudo permissions for broadcast management
-    print_info "Setting up broadcast management permissions..."
-    sudo tee /etc/sudoers.d/rdx-broadcast >/dev/null << 'EOSUDO'
-# RDX Broadcast Control Center permissions
-rd ALL=(root) NOPASSWD: /bin/cp /home/rd/.config/rdx/icecast.xml /etc/icecast2/icecast.xml
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl start icecast2
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop icecast2
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart icecast2
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl status icecast2
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl start liquidsoap
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop liquidsoap
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart liquidsoap
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl status liquidsoap
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl start jackd
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop jackd
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart jackd
-rd ALL=(root) NOPASSWD: /usr/bin/systemctl status jackd
-rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap start
-rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap stop
-rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap restart
-rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap status
-EOSUDO
-    
-    if [ $? -eq 0 ]; then
-        print_status "Broadcast management permissions configured"
-    else
-        print_warning "Could not configure sudo permissions - manual setup may be required"
-    fi
-    
-    # Configure liquidsoap to run as rd user
-    print_info "Configuring liquidsoap user service..."
-    sudo mkdir -p /home/rd/.config/systemd/user
-    sudo tee /home/rd/.config/systemd/user/liquidsoap.service >/dev/null << 'EOLIQ'
-[Unit]
-Description=Liquidsoap Daemon (User Service)
-After=network.target sound.target
-Wants=network.target
-
-[Service]
-Type=notify
-User=rd
-Group=rd
-ExecStart=/usr/bin/liquidsoap /home/rd/.config/rdx/radio.liq
-ExecReload=/bin/kill -HUP $MAINPID
-Restart=on-failure
-RestartSec=5
-Environment=HOME=/home/rd
-WorkingDirectory=/home/rd
-
-[Install]
-WantedBy=default.target
-EOLIQ
-    
-    sudo chown -R rd:rd /home/rd/.config/systemd 2>/dev/null || true
-    print_status "Liquidsoap user service configured"
+    print_status "Audio permissions configured"
     
     # Set up configuration directory
     if [ ! -d "/home/rd/.config/rdx" ]; then

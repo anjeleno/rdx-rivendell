@@ -379,8 +379,8 @@ class IcecastManagementTab(QWidget):
         generate_config_btn.clicked.connect(self.generate_icecast_config)
         config_layout.addWidget(generate_config_btn)
         
-        apply_config_btn = QPushButton("📄 APPLY CONFIG")
-        apply_config_btn.setStyleSheet("QPushButton { background-color: #9b59b6; color: white; font-weight: bold; padding: 8px; }")
+        apply_config_btn = QPushButton("� PREPARE FOR DEPLOYMENT")
+        apply_config_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
         apply_config_btn.clicked.connect(self.apply_icecast_config)
         config_layout.addWidget(apply_config_btn)
         
@@ -645,82 +645,83 @@ class IcecastManagementTab(QWidget):
         return config
         
     def apply_icecast_config(self):
-        """Apply generated configuration to system"""
+        """Save configuration for manual deployment"""
         config_file = Path.home() / ".config" / "rdx" / "icecast.xml"
         if not config_file.exists():
             QMessageBox.warning(self, "No Config", "Please generate configuration first.")
             return
             
-        reply = QMessageBox.question(self, "Apply Configuration", 
-                                   "This will replace the system Icecast configuration.\nContinue?",
-                                   QMessageBox.Yes | QMessageBox.No)
+        # Create deployment directory
+        deploy_dir = Path.home() / ".config" / "rdx" / "deploy"
+        deploy_dir.mkdir(parents=True, exist_ok=True)
         
-        if reply == QMessageBox.Yes:
-            try:
-                # First check if icecast2 directory exists
-                icecast_dir = Path("/etc/icecast2")
-                if not icecast_dir.exists():
-                    # Try to create it or install icecast2
-                    result = QMessageBox.question(self, "Icecast2 Not Found", 
-                                                "Icecast2 is not installed. Install it now?",
-                                                QMessageBox.Yes | QMessageBox.No)
-                    if result == QMessageBox.Yes:
-                        try:
-                            subprocess.run(["sudo", "apt-get", "update"], check=True)
-                            subprocess.run(["sudo", "apt-get", "install", "-y", "icecast2"], check=True)
-                            QMessageBox.information(self, "Icecast2 Installed", "Icecast2 installed successfully!")
-                        except subprocess.CalledProcessError as e:
-                            QMessageBox.critical(self, "Installation Failed", f"Failed to install Icecast2:\n{str(e)}")
-                            return
-                    else:
-                        return
-                
-                # Backup existing config if it exists
-                backup_made = False
-                if Path("/etc/icecast2/icecast.xml").exists():
-                    try:
-                        subprocess.run(["sudo", "cp", "/etc/icecast2/icecast.xml", "/etc/icecast2/icecast.xml.backup"], check=True)
-                        backup_made = True
-                    except subprocess.CalledProcessError:
-                        pass  # Backup failed but continue
-                
-                # Copy to system location (requires sudo)
-                import os
-                current_user = os.getenv('USER') or os.getenv('LOGNAME') or 'unknown'
-                
-                # Try the copy command
-                subprocess.run(["sudo", "cp", str(config_file), "/etc/icecast2/icecast.xml"], check=True)
-                
-                success_msg = "Icecast configuration applied successfully!"
-                if backup_made:
-                    success_msg += "\nOriginal config backed up to icecast.xml.backup"
-                success_msg += "\nRestart Icecast to apply changes."
-                
-                QMessageBox.information(self, "Config Applied", success_msg)
-                
-            except subprocess.CalledProcessError as e:
-                import os
-                current_user = os.getenv('USER') or os.getenv('LOGNAME') or 'unknown'
-                
-                error_msg = f"Failed to apply configuration.\n\nError: {str(e)}\n\n"
-                error_msg += f"Current user: {current_user}\n\n"
-                error_msg += "Possible solutions:\n"
-                
-                if current_user != 'rd':
-                    error_msg += f"1. Switch to rd user: sudo su - rd\n"
-                    error_msg += f"2. Run GUI as rd user\n"
-                    error_msg += f"3. Add {current_user} to sudoers for this operation\n"
-                else:
-                    error_msg += "1. Run the quick permissions fix:\n"
-                    error_msg += "   wget https://raw.githubusercontent.com/anjeleno/rdx-rivendell/main/quick-fix-permissions.sh\n"
-                    error_msg += "   chmod +x quick-fix-permissions.sh && ./quick-fix-permissions.sh\n"
-                
-                error_msg += f"\n4. Or manually copy the config:\n"
-                error_msg += f"   sudo cp {config_file} /etc/icecast2/icecast.xml"
-                
-                QMessageBox.critical(self, "Apply Failed", error_msg)
-            except Exception as e:
-                QMessageBox.critical(self, "Unexpected Error", f"An unexpected error occurred:\n{str(e)}")
+        # Copy config to deployment location
+        deploy_config = deploy_dir / "icecast.xml"
+        try:
+            import shutil
+            shutil.copy2(config_file, deploy_config)
+            
+            # Create deployment instructions
+            instructions_file = deploy_dir / "deployment-instructions.txt"
+            with open(instructions_file, 'w') as f:
+                f.write("RDX Broadcast Control Center - Icecast Configuration Deployment\n")
+                f.write("=" * 70 + "\n\n")
+                f.write("To deploy this Icecast configuration:\n\n")
+                f.write("1. As system administrator (with sudo access):\n")
+                f.write(f"   sudo cp {deploy_config} /etc/icecast2/icecast.xml\n")
+                f.write("   sudo systemctl restart icecast2\n\n")
+                f.write("2. Or for custom Icecast installation:\n")
+                f.write(f"   cp {deploy_config} /path/to/your/icecast.xml\n")
+                f.write("   # Restart your Icecast server\n\n")
+                f.write("Configuration Details:\n")
+                f.write(f"- Generated: {config_file}\n")
+                f.write(f"- Deploy Location: {deploy_config}\n")
+                f.write(f"- Host: {self.host_input.text()}\n")
+                f.write(f"- Port: {self.port_input.value()}\n")
+                f.write(f"- Mount Points: {len(self.get_mount_points())} configured\n\n")
+                f.write("Note: This application does not modify system files directly.\n")
+                f.write("System administrators should deploy configurations as needed.\n")
+            
+            # Show success message with deployment info
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Configuration Ready for Deployment")
+            msg.setText("Icecast configuration has been prepared for deployment.")
+            msg.setDetailedText(f"""Configuration Files:
+• Generated: {config_file}
+• Deploy Ready: {deploy_config}
+• Instructions: {instructions_file}
+
+The configuration is ready for system administrator deployment.
+See deployment-instructions.txt for details.""")
+            
+            # Add buttons for common actions
+            open_folder_btn = msg.addButton("Open Deploy Folder", QMessageBox.AcceptRole)
+            view_config_btn = msg.addButton("View Config", QMessageBox.AcceptRole)
+            ok_btn = msg.addButton(QMessageBox.Ok)
+            
+            msg.exec_()
+            
+            # Handle button actions
+            if msg.clickedButton() == open_folder_btn:
+                import subprocess
+                import platform
+                if platform.system() == "Linux":
+                    subprocess.run(["xdg-open", str(deploy_dir)])
+                elif platform.system() == "Darwin":  # macOS
+                    subprocess.run(["open", str(deploy_dir)])
+                elif platform.system() == "Windows":
+                    subprocess.run(["explorer", str(deploy_dir)])
+            elif msg.clickedButton() == view_config_btn:
+                # Open config file in default editor
+                import subprocess
+                import platform
+                if platform.system() == "Linux":
+                    subprocess.run(["xdg-open", str(deploy_config)])
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Deployment Preparation Failed", 
+                               f"Failed to prepare configuration for deployment:\n{str(e)}")
 
 
 class JackMatrixTab(QWidget):
@@ -1073,80 +1074,121 @@ class ServiceControlTab(QWidget):
                 status_label.setStyleSheet("QLabel { color: #95a5a6; }")
                 
     def start_service(self, service_key):
-        """Start a specific service"""
+        """Start a specific service - provides guidance for manual service management"""
         service_info = self.services[service_key]
         
         if service_key == 'jack':
             QMessageBox.information(self, "Start JACK", 
                                   "JACK startup requires specific configuration.\n"
-                                  "Use JACK configuration tools or RDX profiles.")
+                                  "Use JACK configuration tools or configure via Rivendell.")
+        elif service_key == 'liquidsoap':
+            # For liquidsoap, provide guidance
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Liquidsoap Service")
+            msg.setText("Liquidsoap service management guidance:")
+            msg.setDetailedText("""To start Liquidsoap service:
+
+1. As system administrator:
+   sudo systemctl start liquidsoap
+
+2. Or configure as user service:
+   systemctl --user start liquidsoap
+   (requires proper user service setup)
+
+3. Direct execution for testing:
+   liquidsoap /path/to/config.liq
+
+The application prepares configurations but does not manage system services directly.""")
+            msg.exec_()
         else:
-            try:
-                if service_info.get('user_service', False):
-                    # Use user systemctl for user services
-                    subprocess.run(["systemctl", "--user", "start", service_info['systemd']], check=True)
-                else:
-                    # Use sudo systemctl for system services
-                    subprocess.run(["sudo", "systemctl", "start", service_info['systemd']], check=True)
-                QMessageBox.information(self, "Service Started", f"{service_info['name']} service started successfully!")
-            except subprocess.CalledProcessError as e:
-                import os
-                current_user = os.getenv('USER') or os.getenv('LOGNAME') or 'unknown'
-                
-                error_msg = f"Failed to start {service_info['name']} service.\n\n"
-                error_msg += f"Error: {str(e)}\n\n"
-                
-                if service_key == 'stereo_tool':
-                    error_msg += "Stereo Tool is not installed or service not configured.\n"
-                    error_msg += "This is optional for basic streaming."
-                elif service_key == 'liquidsoap' and service_info.get('user_service', False):
-                    error_msg += "Liquidsoap user service may not be configured.\n"
-                    error_msg += "Run the quick permissions fix script to set it up."
-                elif current_user != 'rd':
-                    error_msg += f"Permission issue: Current user is '{current_user}'.\n"
-                    error_msg += "Try running as 'rd' user or fix permissions."
-                
-                QMessageBox.critical(self, "Start Failed", error_msg)
+            # For other services, provide guidance
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle(f"{service_info['name']} Service")
+            msg.setText(f"To start {service_info['name']} service:")
+            msg.setDetailedText(f"""System administrator should run:
+
+sudo systemctl start {service_info['systemd']}
+
+This application does not modify system services directly.
+Service management should be handled by system administrators.""")
+            msg.exec_()
                 
     def stop_service(self, service_key):
-        """Stop a specific service"""
+        """Stop a specific service - provides guidance for manual service management"""
         service_info = self.services[service_key]
         
-        try:
-            if service_key == 'jack':
-                subprocess.run(["sudo", "killall", "jackd"], check=True)
-            elif service_info.get('user_service', False):
-                # Use user systemctl for user services
-                subprocess.run(["systemctl", "--user", "stop", service_info['systemd']], check=True)
-            else:
-                subprocess.run(["sudo", "systemctl", "stop", service_info['systemd']], check=True)
-            QMessageBox.information(self, "Service Stopped", f"{service_info['name']} service stopped successfully!")
-        except subprocess.CalledProcessError as e:
-            error_msg = f"Failed to stop {service_info['name']} service.\n\n"
-            error_msg += f"Error: {str(e)}\n\n"
-            
-            if service_key == 'jack':
-                error_msg += "JACK may not be running or permission issue with killall."
-            elif service_key == 'stereo_tool':
-                error_msg += "Stereo Tool service may not exist - this is optional."
-            
-            QMessageBox.critical(self, "Stop Failed", error_msg)
+        if service_key == 'jack':
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Stop JACK")
+            msg.setText("JACK service management guidance:")
+            msg.setDetailedText("""To stop JACK:
+
+1. Via systemctl (if configured as service):
+   sudo systemctl stop jackd
+
+2. Direct process termination:
+   killall jackd
+
+3. Via JACK tools:
+   Use QjackCtl or other JACK management tools
+
+This application does not manage JACK directly.""")
+            msg.exec_()
+        elif service_key == 'liquidsoap':
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Stop Liquidsoap")
+            msg.setText("Liquidsoap service management guidance:")
+            msg.setDetailedText("""To stop Liquidsoap:
+
+1. System service:
+   sudo systemctl stop liquidsoap
+
+2. User service:
+   systemctl --user stop liquidsoap
+
+3. Direct process:
+   killall liquidsoap
+
+Service management should be handled by system administrators.""")
+            msg.exec_()
+        else:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle(f"Stop {service_info['name']}")
+            msg.setText(f"To stop {service_info['name']} service:")
+            msg.setDetailedText(f"""System administrator should run:
+
+sudo systemctl stop {service_info['systemd']}
+
+This application does not modify system services directly.""")
+            msg.exec_()
             
     def restart_service(self, service_key):
-        """Restart a specific service"""
+        """Restart a specific service - provides guidance for manual service management"""
         service_info = self.services[service_key]
         
         if service_key == 'jack':
             QMessageBox.information(self, "Restart JACK", 
                                   "JACK restart requires specific procedures.\n"
-                                  "Use JACK configuration tools or RDX profiles.")
+                                  "Use JACK configuration tools or configure via Rivendell.")
         else:
-            try:
-                if service_info.get('user_service', False):
-                    # Use user systemctl for user services
-                    subprocess.run(["systemctl", "--user", "restart", service_info['systemd']], check=True)
-                else:
-                    subprocess.run(["sudo", "systemctl", "restart", service_info['systemd']], check=True)
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle(f"Restart {service_info['name']}")
+            msg.setText(f"To restart {service_info['name']} service:")
+            msg.setDetailedText(f"""System administrator should run:
+
+sudo systemctl restart {service_info['systemd']}
+
+Or for user services:
+systemctl --user restart {service_info['systemd']}
+
+This application provides configuration guidance but does not manage system services directly.""")
+            msg.exec_()
                 QMessageBox.information(self, "Service Restarted", f"{service_info['name']} service restarted successfully!")
             except subprocess.CalledProcessError:
                 QMessageBox.critical(self, "Restart Failed", f"Failed to restart {service_info['name']} service.")

@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.0.8"
+PACKAGE_VERSION="3.1.0"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -250,12 +250,11 @@ sudo dpkg -i ${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb
 sudo apt-get install -f  # Install dependencies if needed
 \`\`\`
 
-## Permissions Fix
-If you get permission errors when applying Icecast configuration:
+## Configuration Deployment
+Icecast configurations are prepared for manual deployment by system administrators:
 \`\`\`bash
-sudo cp /usr/share/doc/$PACKAGE_NAME/fix-permissions.sh /tmp/
-chmod +x /tmp/fix-permissions.sh
-/tmp/fix-permissions.sh
+# Configuration files are saved to ~/.config/rdx/deploy/
+# Follow deployment instructions provided by the application
 \`\`\`
 
 ## Usage
@@ -310,11 +309,6 @@ python3 /usr/local/bin/rdx-broadcast-control-center.py
 ## Support
 Complete broadcast automation solution for professional radio stations.
 EOF
-
-# Copy permissions fix script
-echo "🔧 Installing permissions fix script..."
-cp "$RDX_ROOT/fix-permissions.sh" "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/"
-chmod +x "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/fix-permissions.sh"
 
 # Create DEBIAN control file
 cat > "$PACKAGE_DIR/DEBIAN/control" << EOF
