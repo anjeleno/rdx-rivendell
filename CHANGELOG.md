@@ -14,6 +14,13 @@
 ### Packaging
 - Rebuilt and published 3.2.20 to ensure the corrected script is propagated cleanly
 
+## v3.2.21 (2025-10-22)
+### Added
+- Launcher diagnostics: logs Python runtime version and the first 3 lines of the installed app script to aid remote troubleshooting of indentation/version mismatches
+
+### Fixed
+- Minor version string alignment
+
 ## v3.2.18 (2025-10-22)
 ### Fixed
 - Resolved Python SyntaxError/indentation issues introduced during installer integration

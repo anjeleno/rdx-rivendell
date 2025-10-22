@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.20"
+PACKAGE_VERSION="3.2.21"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -115,6 +115,14 @@ cd "$HOME" 2>/dev/null || cd /tmp
 
 # Launch with error capture
 log_error "Starting RDX Broadcast Control Center"
+
+# Log Python runtime and app script version header for diagnostics
+PY_VER=$(python3 -c 'import sys; print(sys.version.replace("\n"," "))' 2>/dev/null)
+log_error "Python: ${PY_VER}"
+if [ -f "/usr/local/bin/rdx-broadcast-control-center.py" ]; then
+    head -n 3 /usr/local/bin/rdx-broadcast-control-center.py 2>/dev/null | sed 's/^/[app-header] /' >> /var/log/rdx-launcher.log 2>/dev/null || \
+    head -n 3 /usr/local/bin/rdx-broadcast-control-center.py 2>/dev/null | sed 's/^/[app-header] /' >> /tmp/rdx-launcher.log
+fi
 
 # Try to launch and capture any Python errors
 if ! python3 /usr/local/bin/rdx-broadcast-control-center.py "$@" 2>/tmp/rdx-python-error.log; then
