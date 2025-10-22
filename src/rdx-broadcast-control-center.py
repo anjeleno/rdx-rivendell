@@ -350,15 +350,13 @@ output.icecast(
             return f"%mp3(bitrate={kbps})"
         elif codec in ("AAC+", "AAC"):
             # Prefer widely-available ffmpeg-based AAC encoder.
-            # This generates ADTS AAC suitable for Icecast when ffmpeg plugin is installed.
-            # Example: %ffmpeg(format="adts", audio_codec="aac", audio_bitrate=64k)
+            # Liquidsoap expects audio_bitrate as a string (e.g., "64k").
             kbps = bitrate.split()[0]
             try:
-                # Ensure numeric and append 'k' for ffmpeg bitrate value
                 int(kbps)
             except Exception:
                 kbps = "64"
-            return f"%ffmpeg(format=\"adts\", audio_codec=\"aac\", audio_bitrate={kbps}k)"
+            return f"%ffmpeg(format=\"adts\", audio_codec=\"aac\", audio_bitrate=\"{kbps}k\")"
         elif codec == "FLAC":
             quality = bitrate.split()[1]
             return f"%flac(compression={quality})"
@@ -1399,6 +1397,13 @@ class ServiceControlTab(QWidget):
                                          "The 'liquidsoap' command is not installed or not in PATH.\n"
                                          "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
                     return
+                # Parse-check Liquidsoap config before launching
+                check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                if check.returncode != 0:
+                    msg = (check.stderr or check.stdout or "Unknown parse error").strip()
+                    QMessageBox.critical(self, "Liquidsoap Config Error",
+                                         f"Failed to parse Liquidsoap config:\n\n{msg}")
+                    return
                 
                 if config_file.exists():
                     try:
@@ -1500,6 +1505,13 @@ class ServiceControlTab(QWidget):
                     QMessageBox.critical(self, "Liquidsoap Not Found", 
                                          "The 'liquidsoap' command is not installed or not in PATH.\n"
                                          "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
+                    return
+                # Parse-check Liquidsoap config before launching
+                check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                if check.returncode != 0:
+                    msg = (check.stderr or check.stdout or "Unknown parse error").strip()
+                    QMessageBox.critical(self, "Liquidsoap Config Error",
+                                         f"Failed to parse Liquidsoap config:\n\n{msg}")
                     return
                 
                 if config_file.exists():

@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.9 (2025-10-22)
+### Fixed
+- Liquidsoap AAC config: quote ffmpeg audio_bitrate value (e.g., "64k") to fix parse error
+
+### Improved
+- Preflight: run `liquidsoap -c` to parse-check config before starting/restarting; show errors in-app
+
 ## v3.2.8 (2025-10-22)
 ### Fixed
 - Liquidsoap AAC encoder config: replaced unsupported `%aac(...)` with widely-supported ffmpeg-based AAC encoder
