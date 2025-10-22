@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.13"
+PACKAGE_VERSION="3.2.14"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -84,10 +84,12 @@ if [ -z "$DISPLAY" ]; then
     log_error "No DISPLAY set, defaulting to :0"
 fi
 
-# Test if DISPLAY is accessible
-if ! xset q >/dev/null 2>&1; then
-    show_error "Cannot connect to X11 display. Make sure you're in a GUI session."
-    exit 1
+# Test if DISPLAY is accessible (skip strict X11 check on Wayland or when xset is unavailable)
+if [ "${XDG_SESSION_TYPE}" != "wayland" ] && command -v xset >/dev/null 2>&1; then
+    if ! xset q >/dev/null 2>&1; then
+        log_error "X11 display not accessible via xset; proceeding anyway."
+        # Do not exit here; allow PyQt to attempt to initialize the display
+    fi
 fi
 
 # Check Python3 availability

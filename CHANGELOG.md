@@ -1,5 +1,13 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.14 (2025-10-22)
+### Fixed
+- Hotfix: Moved status bar initialization inside `setup_ui()` and corrected `setWindowTitle` indentation in `__init__`
+- Resolves NameError and IndentationError seen when launching from desktop shortcut
+
+### Packaging
+- Builder script bumped to 3.2.14 and rebuilt package
+
 ## v3.2.13 (2025-10-22)
 ### Fixed
 - Hotfix: Resolved IndentationError in main window constructor (`__init__`) causing startup failure
