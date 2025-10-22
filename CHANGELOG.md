@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.22 (2025-10-22)
+### Fixed
+- Restored Stream Builder controls accidentally removed during refactor:
+  - "Generate Liquidsoap Config" and "Apply to Icecast" buttons
+  - Configuration Status area reinstated and grouped
+- Fixed Streams table to include an "Actions" column (7 columns total) to avoid out-of-bounds cell widget placement
+
 ## v3.2.19 (2025-10-22)
 ### Fixed
 - Residual indentation errors after 3.2.18 cleanup: removed stray duplicated block after `start_service()` and repaired mis-indented lines in main window

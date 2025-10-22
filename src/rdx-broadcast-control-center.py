@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.21
+RDX Professional Broadcast Control Center v3.2.23
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -66,17 +66,35 @@ class StreamBuilderTab(QWidget):
 
         layout.addWidget(builder_group)
 
-        # Streams table
-        self.streams_table = QTableWidget()
-        self.streams_table.setColumnCount(6)
-        self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description"])
-        self.streams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        layout.addWidget(self.streams_table)
+    # Streams table
+    self.streams_table = QTableWidget()
+    self.streams_table.setColumnCount(7)
+    self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description", "Actions"])
+    self.streams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    layout.addWidget(self.streams_table)
 
-        # Status area
-        self.status_text = QTextEdit()
-        self.status_text.setReadOnly(True)
-        layout.addWidget(self.status_text)
+    # Actions (Generate/Apply)
+    actions_row = QHBoxLayout()
+    gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
+    gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
+    gen_btn.clicked.connect(self.generate_liquidsoap_config)
+    actions_row.addWidget(gen_btn)
+
+    apply_btn = QPushButton("📡 Apply to Icecast")
+    apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+    apply_btn.clicked.connect(self.apply_to_icecast)
+    actions_row.addWidget(apply_btn)
+
+    actions_row.addStretch(1)
+    layout.addLayout(actions_row)
+
+    # Status area group
+    status_group = QGroupBox("📄 Configuration Status")
+    status_layout = QVBoxLayout(status_group)
+    self.status_text = QTextEdit()
+    self.status_text.setReadOnly(True)
+    status_layout.addWidget(self.status_text)
+    layout.addWidget(status_group)
 
     def add_stream(self):
         """Add a new stream configuration from inputs"""
@@ -1598,17 +1616,16 @@ class ServiceControlTab(QWidget):
                 mode = "official"
             elif choice.startswith("Add vendor"):
                 mode = "vendor"
-            # Try pkexec to elevate
+            # Try pkexec with explicit bash to avoid exec bit / mount noexec issues
             installer = "/usr/share/rdx/install-liquidsoap-plugin.sh"
-            cmd = ["pkexec", installer, mode]
+            cmd = ["pkexec", "/bin/bash", installer, mode]
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
-                # Fallback: try sudo in a terminal-less environment might fail, but attempt
-                res2 = subprocess.run(["sudo", installer, mode], capture_output=True, text=True)
-                if res2.returncode != 0:
-                    QMessageBox.critical(self, "Install Failed",
-                                         f"Failed to install FFmpeg plugin.\n\nOutput:\n{(res.stdout or res.stderr or '') + (res2.stdout or res2.stderr or '')}")
-                    return False
+                out = (res.stdout or "") + ("\n" + res.stderr if res.stderr else "")
+                QMessageBox.critical(self, "Install Failed",
+                                     f"Failed to install FFmpeg plugin.\n\nOutput:\n{out}\n\n"
+                                     "Tip: Ensure a PolicyKit authentication agent is running and that the file is executable.")
+                return False
             QMessageBox.information(self, "Install Complete",
                                     "FFmpeg plugin installation attempted. Rechecking availability...")
             return True
@@ -1790,7 +1807,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.21")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.23")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1837,7 +1854,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.21")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.23")
 
 
 def main():
@@ -1845,7 +1862,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.21")
+    app.setApplicationVersion("3.2.23")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
