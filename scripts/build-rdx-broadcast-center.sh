@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.7"
+PACKAGE_VERSION="3.2.8"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -320,12 +320,12 @@ Priority: optional
 Architecture: $ARCHITECTURE
 Maintainer: $MAINTAINER
 Depends: python3 (>= 3.6), python3-pyqt5
-Recommends: jackd2, liquidsoap, icecast2, qjackctl
+Recommends: jackd2, liquidsoap, liquidsoap-plugin-ffmpeg, icecast2, qjackctl
 Suggests: stereo-tool
 Description: $DESCRIPTION
- Professional broadcast control center providing complete GUI management
+ Professional broadcast streaming center providing complete GUI management
  for streaming, icecast configuration, JACK audio routing, and service
- orchestration. Includes stream builder with multiple codecs, visual
+ orchestration. Includes smart stream builder with multiple codecs, visual
  JACK connection matrix with critical connection protection, and
  comprehensive service management.
  .

@@ -7,6 +7,13 @@
 ### Docs
 - Added/updated changelog entries for v3.2.4–v3.2.6
 
+## v3.2.8 (2025-10-22)
+### Fixed
+- Liquidsoap AAC encoder config: replaced unsupported `%aac(...)` with widely-supported ffmpeg-based AAC encoder
+
+### Packaging
+- Recommend `liquidsoap-plugin-ffmpeg` to ensure AAC encoding availability by default
+
 ## v3.2.6 (2025-10-22)
 ### Fixed
 - Resolved Python IndentationError and SyntaxError introduced during log viewer integration

@@ -294,7 +294,7 @@ install_stereo_tool() {
 
 install_liquidsoap() {
     if command -v apt-get &> /dev/null; then
-        sudo apt-get install -y liquidsoap liquidsoap-plugin-all
+    sudo apt-get install -y liquidsoap liquidsoap-plugin-all liquidsoap-plugin-ffmpeg
     elif command -v yum &> /dev/null; then
         sudo yum install -y liquidsoap
     else
