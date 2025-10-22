@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.23
+RDX Professional Broadcast Control Center v3.2.24
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -66,35 +66,35 @@ class StreamBuilderTab(QWidget):
 
         layout.addWidget(builder_group)
 
-    # Streams table
-    self.streams_table = QTableWidget()
-    self.streams_table.setColumnCount(7)
-    self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description", "Actions"])
-    self.streams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-    layout.addWidget(self.streams_table)
+        # Streams table
+        self.streams_table = QTableWidget()
+        self.streams_table.setColumnCount(7)
+        self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description", "Actions"])
+        self.streams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.streams_table)
 
-    # Actions (Generate/Apply)
-    actions_row = QHBoxLayout()
-    gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
-    gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
-    gen_btn.clicked.connect(self.generate_liquidsoap_config)
-    actions_row.addWidget(gen_btn)
+        # Actions (Generate/Apply)
+        actions_row = QHBoxLayout()
+        gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
+        gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
+        gen_btn.clicked.connect(self.generate_liquidsoap_config)
+        actions_row.addWidget(gen_btn)
 
-    apply_btn = QPushButton("📡 Apply to Icecast")
-    apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
-    apply_btn.clicked.connect(self.apply_to_icecast)
-    actions_row.addWidget(apply_btn)
+        apply_btn = QPushButton("📡 Apply to Icecast")
+        apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+        apply_btn.clicked.connect(self.apply_to_icecast)
+        actions_row.addWidget(apply_btn)
 
-    actions_row.addStretch(1)
-    layout.addLayout(actions_row)
+        actions_row.addStretch(1)
+        layout.addLayout(actions_row)
 
-    # Status area group
-    status_group = QGroupBox("📄 Configuration Status")
-    status_layout = QVBoxLayout(status_group)
-    self.status_text = QTextEdit()
-    self.status_text.setReadOnly(True)
-    status_layout.addWidget(self.status_text)
-    layout.addWidget(status_group)
+        # Status area group
+        status_group = QGroupBox("📄 Configuration Status")
+        status_layout = QVBoxLayout(status_group)
+        self.status_text = QTextEdit()
+        self.status_text.setReadOnly(True)
+        status_layout.addWidget(self.status_text)
+        layout.addWidget(status_group)
 
     def add_stream(self):
         """Add a new stream configuration from inputs"""

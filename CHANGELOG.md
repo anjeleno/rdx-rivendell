@@ -1,5 +1,22 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.24 (2025-10-22)
+### Fixed
+- Startup crash on some environments: "QWidget: Must construct a QApplication before a QWidget"
+  - Moved all Stream Builder widget creation strictly inside `setup_ui()` so no widgets are created at import time
+  - Ensures clean startup when launching via desktop shortcut or wrapper scripts
+
+### Notes
+- No functional changes beyond the crash fix; recommended upgrade for all users seeing the startup error
+
+## v3.2.23 (2025-10-22)
+### Improved
+- Installer elevation: use `pkexec /bin/bash /usr/share/rdx/install-liquidsoap-plugin.sh` to avoid noexec/permission issues and eliminate sudo TTY errors
+- Better error messages when PolicyKit is unavailable or the operation is canceled
+
+### Packaging
+- Rebuilt and published `.deb` with the updated installer invocation
+
 ## v3.2.22 (2025-10-22)
 ### Fixed
 - Restored Stream Builder controls accidentally removed during refactor:
@@ -7,12 +24,12 @@
   - Configuration Status area reinstated and grouped
 - Fixed Streams table to include an "Actions" column (7 columns total) to avoid out-of-bounds cell widget placement
 
-## v3.2.19 (2025-10-22)
-### Fixed
-- Residual indentation errors after 3.2.18 cleanup: removed stray duplicated block after `start_service()` and repaired mis-indented lines in main window
+## v3.2.21 (2025-10-22)
+### Added
+- Launcher diagnostics: logs Python runtime version and the first 3 lines of the installed app script to aid remote troubleshooting of indentation/version mismatches
 
-### Notes
-- No functional changes beyond syntax fixes; retains guided FFmpeg plugin installer and preflight sanitizers
+### Fixed
+- Minor version string alignment
 
 ## v3.2.20 (2025-10-22)
 ### Fixed
@@ -21,12 +38,12 @@
 ### Packaging
 - Rebuilt and published 3.2.20 to ensure the corrected script is propagated cleanly
 
-## v3.2.21 (2025-10-22)
-### Added
-- Launcher diagnostics: logs Python runtime version and the first 3 lines of the installed app script to aid remote troubleshooting of indentation/version mismatches
-
+## v3.2.19 (2025-10-22)
 ### Fixed
-- Minor version string alignment
+- Residual indentation errors after 3.2.18 cleanup: removed stray duplicated block after `start_service()` and repaired mis-indented lines in main window
+
+### Notes
+- No functional changes beyond syntax fixes; retains guided FFmpeg plugin installer and preflight sanitizers
 
 ## v3.2.18 (2025-10-22)
 ### Fixed
