@@ -1,5 +1,16 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.2 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed Python syntax error (IndentationError) that prevented application startup
+- **CLEANED**: Removed leftover code fragments from previous config directory method refactoring
+- **RESOLVED**: Application now starts without syntax errors
+
+### Technical Cleanup
+- Cleaned up duplicate and orphaned code lines in IcecastManagementTab class
+- Fixed indentation issues from method refactoring
+- Ensured clean Python syntax throughout codebase
+
 ## v3.2.1 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed config directory fallback causing files to save in `~/.rdx` instead of `~/.config/rdx`
