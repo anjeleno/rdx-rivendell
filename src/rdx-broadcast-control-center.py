@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.1.9
+RDX Professional Broadcast Control Center v3.2.0
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -715,9 +715,17 @@ class IcecastManagementTab(QWidget):
         config_dir = self.get_config_directory()
         config_file = config_dir / "icecast.xml"
         
+        # Auto-generate config if it doesn't exist
         if not config_file.exists():
-            QMessageBox.warning(self, "No Config", "Please generate configuration first.")
-            return
+            try:
+                self.generate_icecast_config()
+                # Recheck if config was created
+                if not config_file.exists():
+                    QMessageBox.warning(self, "Config Generation Failed", "Could not generate Icecast configuration.")
+                    return
+            except Exception as e:
+                QMessageBox.critical(self, "Config Generation Error", f"Failed to generate config:\n{str(e)}")
+                return
             
         # Verify the config file is readable
         try:
@@ -774,14 +782,21 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
             
             # Get mount point count from parent's stream builder
             mount_count = 0
+            stream_info = "No streams configured in Stream Builder tab"
             if hasattr(self.parent(), 'stream_builder') and hasattr(self.parent().stream_builder, 'streams'):
                 mount_count = len(self.parent().stream_builder.streams)
+                if mount_count > 0:
+                    stream_names = [stream.get('mount', 'Unknown') for stream in self.parent().stream_builder.streams]
+                    stream_info = f"Streams: {', '.join(stream_names)}"
+                else:
+                    stream_info = "No streams configured in Stream Builder tab - add streams first!"
             
             QMessageBox.information(self, "Configuration Applied", 
                                   f"Icecast configuration applied and service restarted successfully!\n\n"
                                   f"Host: {self.host_input.text()}\n"
                                   f"Port: {self.port_input.value()}\n"
-                                  f"Mount Points: {mount_count} configured\n\n"
+                                  f"Mount Points: {mount_count} configured\n"
+                                  f"{stream_info}\n\n"
                                   f"Config file: {config_file}\n"
                                   f"Backup saved: /etc/icecast2/icecast.xml.backup")
                                   
@@ -817,8 +832,9 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
                                f"Error applying configuration:\n{str(e)}")
 
     def get_config_directory(self):
-        """Get the application config directory, creating it if needed"""
+        """Get the application config directory, creating it if needed with proper ownership"""
         import os
+        import getpass
         
         # Try standard config directory first
         config_dir = Path.home() / ".config" / "rdx"
@@ -826,13 +842,59 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
         try:
             # Create and test if we can write to standard location
             config_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Ensure proper ownership for the config directory
+            try:
+                current_user = getpass.getuser()
+                # Get user and group info
+                import pwd
+                import grp
+                user_info = pwd.getpwnam(current_user)
+                user_uid = user_info.pw_uid
+                user_gid = user_info.pw_gid
+                
+                # Set ownership to current user
+                os.chown(config_dir, user_uid, user_gid)
+                
+                # Also fix parent .config directory if needed
+                config_parent = config_dir.parent
+                if config_parent.exists():
+                    try:
+                        os.chown(config_parent, user_uid, user_gid)
+                    except (PermissionError, OSError):
+                        pass  # Ignore if we can't fix parent
+                        
+            except (PermissionError, OSError, ImportError, KeyError):
+                pass  # Ignore ownership errors, directory creation worked
+            
+            # Test write access
             test_file = config_dir / ".test"
             test_file.touch()
             test_file.unlink()
             return config_dir
+            
         except (PermissionError, OSError):
             # If standard location fails, try creating in home directory
             fallback_dir = Path.home() / ".rdx"
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Fix ownership for fallback directory too
+                try:
+                    current_user = getpass.getuser()
+                    import pwd
+                    user_info = pwd.getpwnam(current_user)
+                    os.chown(fallback_dir, user_info.pw_uid, user_info.pw_gid)
+                except (PermissionError, OSError, ImportError, KeyError):
+                    pass
+                    
+                return fallback_dir
+            except (PermissionError, OSError):
+                # Last resort - use temp directory with user-specific name
+                import tempfile
+                temp_dir = Path(tempfile.gettempdir()) / f"rdx-{current_user}"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                return temp_dir
             try:
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 return fallback_dir
@@ -1378,7 +1440,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.1.9")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.0")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1425,7 +1487,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.9")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.0")
 
 
 def main():
@@ -1433,7 +1495,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.1.9")
+    app.setApplicationVersion("3.2.0")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

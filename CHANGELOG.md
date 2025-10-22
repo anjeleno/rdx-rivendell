@@ -1,5 +1,25 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.0 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed config files not being generated (Liquidsoap and Icecast)
+- **CRITICAL**: Fixed config directory ownership issues - now sets proper user:user ownership
+- **IMPROVED**: Auto-generation of Icecast config during deployment if missing
+- **ENHANCED**: Better error reporting showing why mount points might be 0
+- **FIXED**: Stream Builder data not transferring to Icecast Management tab
+
+### Major Improvements
+- **Automatic Config Generation**: Deployment now auto-creates missing configs
+- **Proper Ownership**: Config directories created with correct user ownership, not root:root
+- **Enhanced Diagnostics**: Deployment success shows detailed stream information and troubleshooting
+- **Seamless Workflow**: No more manual config generation required - everything automatic
+
+### Technical Enhancements
+- Added proper user/group ownership setting for config directories
+- Enhanced error handling with specific guidance for missing streams
+- Improved inter-tab communication for stream data access
+- Added defensive programming for ownership operations
+
 ## v3.1.9 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed missing `streams` attribute error in Icecast config deployment
