@@ -31,7 +31,7 @@ echo -e "${BLUE}ℹ️  Setting up broadcast management permissions...${NC}"
 # Add sudo permissions for broadcast management
 sudo tee /etc/sudoers.d/rdx-broadcast >/dev/null << 'EOSUDO'
 # RDX Broadcast Control Center permissions
-rd ALL=(root) NOPASSWD: /bin/cp * /etc/icecast2/icecast.xml
+rd ALL=(root) NOPASSWD: /bin/cp /home/rd/.config/rdx/icecast.xml /etc/icecast2/icecast.xml
 rd ALL=(root) NOPASSWD: /usr/bin/systemctl start icecast2
 rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop icecast2
 rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart icecast2
@@ -44,6 +44,10 @@ rd ALL=(root) NOPASSWD: /usr/bin/systemctl start jackd
 rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop jackd
 rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart jackd
 rd ALL=(root) NOPASSWD: /usr/bin/systemctl status jackd
+rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap start
+rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap stop
+rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap restart
+rd ALL=(root) NOPASSWD: /usr/sbin/service liquidsoap status
 EOSUDO
 
 if [ $? -eq 0 ]; then

@@ -748,10 +748,10 @@ class ServiceControlTab(QWidget):
     def __init__(self):
         super().__init__()
         self.services = {
-            'jack': {'name': 'JACK Audio', 'systemd': 'jack', 'status': 'unknown'},
-            'stereo_tool': {'name': 'Stereo Tool', 'systemd': 'stereo-tool', 'status': 'unknown'},
-            'liquidsoap': {'name': 'Liquidsoap', 'systemd': 'liquidsoap', 'status': 'unknown'},
-            'icecast': {'name': 'Icecast', 'systemd': 'icecast2', 'status': 'unknown'}
+            'jack': {'name': 'JACK Audio', 'systemd': 'jack', 'status': 'unknown', 'user_service': False},
+            'stereo_tool': {'name': 'Stereo Tool', 'systemd': 'stereo-tool', 'status': 'unknown', 'user_service': False},
+            'liquidsoap': {'name': 'Liquidsoap', 'systemd': 'liquidsoap', 'status': 'unknown', 'user_service': True},
+            'icecast': {'name': 'Icecast', 'systemd': 'icecast2', 'status': 'unknown', 'user_service': False}
         }
         self.setup_ui()
         
@@ -868,9 +868,16 @@ class ServiceControlTab(QWidget):
                         status_label.setText("❌ Stopped")
                         status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
                 else:
-                    # Standard systemd service check
-                    result = subprocess.run(["systemctl", "is-active", service_info['systemd']], 
-                                          capture_output=True, text=True)
+                    # Check if it's a user service
+                    if service_info.get('user_service', False):
+                        # User systemd service check
+                        result = subprocess.run(["systemctl", "--user", "is-active", service_info['systemd']], 
+                                              capture_output=True, text=True)
+                    else:
+                        # Standard systemd service check
+                        result = subprocess.run(["systemctl", "is-active", service_info['systemd']], 
+                                              capture_output=True, text=True)
+                    
                     if result.stdout.strip() == "active":
                         status_label.setText("✅ Running")
                         status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
@@ -892,7 +899,12 @@ class ServiceControlTab(QWidget):
                                   "Use JACK configuration tools or RDX profiles.")
         else:
             try:
-                subprocess.run(["sudo", "systemctl", "start", service_info['systemd']], check=True)
+                if service_info.get('user_service', False):
+                    # Use user systemctl for user services
+                    subprocess.run(["systemctl", "--user", "start", service_info['systemd']], check=True)
+                else:
+                    # Use sudo systemctl for system services
+                    subprocess.run(["sudo", "systemctl", "start", service_info['systemd']], check=True)
                 QMessageBox.information(self, "Service Started", f"{service_info['name']} service started successfully!")
             except subprocess.CalledProcessError:
                 QMessageBox.critical(self, "Start Failed", f"Failed to start {service_info['name']} service.")
@@ -904,6 +916,9 @@ class ServiceControlTab(QWidget):
         try:
             if service_key == 'jack':
                 subprocess.run(["sudo", "killall", "jackd"], check=True)
+            elif service_info.get('user_service', False):
+                # Use user systemctl for user services
+                subprocess.run(["systemctl", "--user", "stop", service_info['systemd']], check=True)
             else:
                 subprocess.run(["sudo", "systemctl", "stop", service_info['systemd']], check=True)
             QMessageBox.information(self, "Service Stopped", f"{service_info['name']} service stopped successfully!")
@@ -920,7 +935,11 @@ class ServiceControlTab(QWidget):
                                   "Use JACK configuration tools or RDX profiles.")
         else:
             try:
-                subprocess.run(["sudo", "systemctl", "restart", service_info['systemd']], check=True)
+                if service_info.get('user_service', False):
+                    # Use user systemctl for user services
+                    subprocess.run(["systemctl", "--user", "restart", service_info['systemd']], check=True)
+                else:
+                    subprocess.run(["sudo", "systemctl", "restart", service_info['systemd']], check=True)
                 QMessageBox.information(self, "Service Restarted", f"{service_info['name']} service restarted successfully!")
             except subprocess.CalledProcessError:
                 QMessageBox.critical(self, "Restart Failed", f"Failed to restart {service_info['name']} service.")
