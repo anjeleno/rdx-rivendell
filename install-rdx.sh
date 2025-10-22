@@ -56,6 +56,22 @@ detect_ubuntu_version() {
     fi
 }
 
+# Detect desktop environment
+detect_desktop_environment() {
+    print_info "Detecting desktop environment..."
+    
+    if [ "$XDG_CURRENT_DESKTOP" ]; then
+        DESKTOP_ENV="$XDG_CURRENT_DESKTOP"
+        print_info "Desktop environment: $DESKTOP_ENV"
+        
+        if [[ "$DESKTOP_ENV" == *"MATE"* ]]; then
+            print_warning "MATE desktop detected - using enhanced launcher compatibility"
+        fi
+    else
+        print_warning "Desktop environment not detected"
+    fi
+}
+
 # Check if Rivendell is installed
 check_rivendell() {
     if [ -f "/etc/rd.conf" ] && [ -f "/usr/bin/rdadmin" ]; then
@@ -223,6 +239,10 @@ main() {
         sudo -v
     fi
     
+    # Detect system information
+    detect_ubuntu_version
+    detect_desktop_environment
+    
     # Detect system
     detect_ubuntu_version
     check_rivendell
@@ -246,7 +266,11 @@ main() {
     echo ""
     echo -e "${BLUE}📱 Launch Options:${NC}"
     echo "   • Applications → Sound & Video → 'RDX Broadcast Control Center'"
+    if [[ "$DESKTOP_ENV" == *"MATE"* ]]; then
+        echo "   • For MATE Desktop: 'RDX Terminal Launcher' (if main launcher fails)"
+    fi
     echo "   • Command line: rdx-control-center"
+    echo "   • Debug mode: rdx-debug-launcher"
     echo ""
     echo -e "${BLUE}✨ Features Available:${NC}"
     echo "   🎵 Stream Builder (MP3, AAC+, FLAC, OGG, OPUS)"

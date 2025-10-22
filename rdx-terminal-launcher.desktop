@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=💻 RDX Control Center (Terminal)
+Comment=Launch RDX with full error output in terminal
+Exec=mate-terminal --title="RDX Broadcast Control Center" -e "bash -c 'echo \"🎯 RDX Broadcast Control Center Launcher\"; echo \"========================================\"; echo \"\"; echo \"🔍 Checking environment...\"; echo \"Display: $DISPLAY\"; echo \"User: $(whoami)\"; echo \"Python: $(python3 --version 2>&1)\"; echo \"\"; if python3 -c \"import PyQt5\" 2>/dev/null; then echo \"✅ PyQt5 available\"; else echo \"❌ PyQt5 not available\"; fi; echo \"\"; echo \"🚀 Launching RDX...\"; echo \"\"; cd /home/rd 2>/dev/null || cd /tmp; python3 /usr/local/bin/rdx-broadcast-control-center.py; echo \"\"; echo \"Press Enter to close...\"; read'"
+Icon=utilities-terminal
+Terminal=false
+Categories=AudioVideo;Audio;AudioVideoEditing;Development;
+Keywords=broadcast;streaming;debug;rdx;terminal;
+StartupNotify=true

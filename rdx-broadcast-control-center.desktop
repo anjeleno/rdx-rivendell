@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=🎯 RDX Broadcast Control Center
 Comment=Professional Broadcast Control Center - Complete streaming and service management
-Exec=rdx-control-center
+Exec=gnome-terminal --title="RDX Launcher" -- bash -c 'echo "🎯 Starting RDX Broadcast Control Center..."; echo ""; /usr/local/bin/rdx-control-center-debug; echo ""; echo "Press Enter to close..."; read'
 Icon=audio-x-generic
 Terminal=false
 Categories=AudioVideo;Audio;AudioVideoEditing;

@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.0.3"
+PACKAGE_VERSION="3.0.4"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -38,10 +38,11 @@ echo "📋 Installing main application..."
 cp "$RDX_ROOT/src/rdx-broadcast-control-center.py" "$PACKAGE_DIR/usr/local/bin/"
 chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py"
 
-# Copy desktop entry
+# Copy desktop entries
 echo "🖥️ Installing desktop integration..."
 cp "$RDX_ROOT/rdx-broadcast-control-center.desktop" "$PACKAGE_DIR/usr/share/applications/"
 cp "$RDX_ROOT/rdx-debug-launcher.desktop" "$PACKAGE_DIR/usr/share/applications/"
+cp "$RDX_ROOT/rdx-terminal-launcher.desktop" "$PACKAGE_DIR/usr/share/applications/"
 
 # Create wrapper script for easier launching with error handling
 cat > "$PACKAGE_DIR/usr/local/bin/rdx-control-center" << 'EOF'
