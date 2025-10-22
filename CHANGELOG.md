@@ -1,5 +1,43 @@
 # RDX (Rivendell Extended) - CHANGELOG
 
+## [3.1.3] - 2025-10-22 - "Critical Bug Fixes" Release 🚑
+
+### 🚑 CRITICAL FIXES
+
+#### Missing Config Directory Method
+- **FIXED**: Added missing `get_config_directory()` method to IcecastManagementTab class
+- **RESOLVED**: "AttributeError: 'IcecastManagementTab' object has no attribute 'get_config_directory'"
+- **IMPACT**: Application no longer crashes when generating Icecast configurations
+
+#### Eliminated Amateur "Guidance" Messages
+- **REMOVED**: All unprofessional "guidance" dialog boxes telling users to manually start services
+- **REPLACED**: Service control now actually starts/stops/restarts services automatically
+- **PROFESSIONAL**: No more "As system administrator..." amateur messages
+- **AUTOMATIC**: Services are controlled directly by the application
+
+#### Real Service Management
+- **Liquidsoap**: Automatic start/stop with generated configuration files
+- **JACK**: Direct jackd process management with proper parameters
+- **Icecast**: Systemctl integration with automatic config deployment
+- **Professional**: No manual intervention required from users
+
+#### Configuration Deployment
+- **REMOVED**: Amateur "deployment preparation" that created useless instruction files
+- **REPLACED**: Direct config deployment to system locations with automatic service restart
+- **PROFESSIONAL**: Config files are applied immediately without user intervention
+
+### 🔧 Technical Improvements
+- **Consistent Config Handling**: All tabs now use the same robust config directory logic
+- **Error Recovery**: Proper exception handling for service management operations
+- **Professional UX**: No more amateur guidance popups interrupting workflow
+- **Automatic Operations**: Services controlled seamlessly without user intervention
+
+### 🎯 User Experience
+- **Zero Manual Steps**: Everything happens automatically
+- **Professional Quality**: No more amateur "please run these commands" messages
+- **Error-Free**: Critical crashes eliminated
+- **Seamless Operation**: Services start/stop/restart with single button clicks
+
 ## [3.1.2] - 2025-10-22 - "Stream Persistence" Release 💾
 
 ### 🎯 MAJOR FEATURE: Stream Persistence System

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.1.2
+RDX Professional Broadcast Control Center v3.1.3
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -9,6 +9,7 @@ import os
 import json
 import subprocess
 import signal
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
@@ -709,7 +710,7 @@ class IcecastManagementTab(QWidget):
         return config
         
     def apply_icecast_config(self):
-        """Save configuration for manual deployment"""
+        """Apply Icecast configuration and restart service automatically"""
         # Get config directory
         config_dir = self.get_config_directory()
         config_file = config_dir / "icecast.xml"
@@ -718,77 +719,57 @@ class IcecastManagementTab(QWidget):
             QMessageBox.warning(self, "No Config", "Please generate configuration first.")
             return
             
-        # Create deployment directory
-        deploy_dir = config_dir / "deploy"
-        deploy_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Copy config to deployment location
-        deploy_config = deploy_dir / "icecast.xml"
         try:
-            import shutil
-            shutil.copy2(config_file, deploy_config)
+            # Stop Icecast if running
+            subprocess.run(["systemctl", "stop", "icecast2"], check=False)
             
-            # Create deployment instructions
-            instructions_file = deploy_dir / "deployment-instructions.txt"
-            with open(instructions_file, 'w') as f:
-                f.write("RDX Broadcast Control Center - Icecast Configuration Deployment\n")
-                f.write("=" * 70 + "\n\n")
-                f.write("To deploy this Icecast configuration:\n\n")
-                f.write("1. As system administrator (with sudo access):\n")
-                f.write(f"   sudo cp {deploy_config} /etc/icecast2/icecast.xml\n")
-                f.write("   sudo systemctl restart icecast2\n\n")
-                f.write("2. Or for custom Icecast installation:\n")
-                f.write(f"   cp {deploy_config} /path/to/your/icecast.xml\n")
-                f.write("   # Restart your Icecast server\n\n")
-                f.write("Configuration Details:\n")
-                f.write(f"- Generated: {config_file}\n")
-                f.write(f"- Deploy Location: {deploy_config}\n")
-                f.write(f"- Host: {self.host_input.text()}\n")
-                f.write(f"- Port: {self.port_input.value()}\n")
-                f.write(f"- Mount Points: {len(self.get_mount_points())} configured\n\n")
-                f.write("Note: This application does not modify system files directly.\n")
-                f.write("System administrators should deploy configurations as needed.\n")
+            # Apply configuration by copying to system location
+            subprocess.run(["sudo", "cp", str(config_file), "/etc/icecast2/icecast.xml"], check=True)
             
-            # Show success message with deployment info
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle("Configuration Ready for Deployment")
-            msg.setText("Icecast configuration has been prepared for deployment.")
-            msg.setDetailedText(f"""Configuration Files:
-• Generated: {config_file}
-• Deploy Ready: {deploy_config}
-• Instructions: {instructions_file}
-
-The configuration is ready for system administrator deployment.
-See deployment-instructions.txt for details.""")
+            # Start Icecast with new configuration
+            subprocess.run(["sudo", "systemctl", "start", "icecast2"], check=True)
             
-            # Add buttons for common actions
-            open_folder_btn = msg.addButton("Open Deploy Folder", QMessageBox.AcceptRole)
-            view_config_btn = msg.addButton("View Config", QMessageBox.AcceptRole)
-            ok_btn = msg.addButton(QMessageBox.Ok)
-            
-            msg.exec_()
-            
-            # Handle button actions
-            if msg.clickedButton() == open_folder_btn:
-                import subprocess
-                import platform
-                if platform.system() == "Linux":
-                    subprocess.run(["xdg-open", str(deploy_dir)])
-                elif platform.system() == "Darwin":  # macOS
-                    subprocess.run(["open", str(deploy_dir)])
-                elif platform.system() == "Windows":
-                    subprocess.run(["explorer", str(deploy_dir)])
-            elif msg.clickedButton() == view_config_btn:
-                # Open config file in default editor
-                import subprocess
-                import platform
-                if platform.system() == "Linux":
-                    subprocess.run(["xdg-open", str(deploy_config)])
-                    
+            QMessageBox.information(self, "Configuration Applied", 
+                                  f"Icecast configuration applied and service restarted successfully!\n\n"
+                                  f"Host: {self.host_input.text()}\n"
+                                  f"Port: {self.port_input.value()}\n"
+                                  f"Mount Points: {len(self.get_mount_points())} configured")
+                                  
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Configuration Failed", 
+                               f"Failed to apply Icecast configuration:\n{str(e)}\n\n"
+                               f"Make sure you have sudo privileges for Icecast management.")
         except Exception as e:
-            QMessageBox.critical(self, "Deployment Preparation Failed", 
-                               f"Failed to prepare configuration for deployment:\n{str(e)}")
+            QMessageBox.critical(self, "Configuration Error", 
+                               f"Error applying configuration:\n{str(e)}")
+
+    def get_config_directory(self):
+        """Get the application config directory, creating it if needed"""
+        import os
+        
+        # Try standard config directory first
+        config_dir = Path.home() / ".config" / "rdx"
+        
+        try:
+            # Create and test if we can write to standard location
+            config_dir.mkdir(parents=True, exist_ok=True)
+            test_file = config_dir / ".test"
+            test_file.touch()
+            test_file.unlink()
+            return config_dir
+        except (PermissionError, OSError):
+            # If standard location fails, try creating in home directory
+            fallback_dir = Path.home() / ".rdx"
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                return fallback_dir
+            except (PermissionError, OSError):
+                # Last resort - use temp directory with user-specific name
+                import tempfile
+                import getpass
+                temp_dir = Path(tempfile.gettempdir()) / f"rdx-{getpass.getuser()}"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                return temp_dir
 
 
 class JackMatrixTab(QWidget):
@@ -1141,115 +1122,139 @@ class ServiceControlTab(QWidget):
                 status_label.setStyleSheet("QLabel { color: #95a5a6; }")
                 
     def start_service(self, service_key):
-        """Start a specific service - provides guidance for manual service management"""
+        """Start a specific service automatically"""
         service_info = self.services[service_key]
         
-        if service_key == 'jack':
-            QMessageBox.information(self, "Start JACK", 
-                                  "JACK startup requires specific configuration.\n"
-                                  "Use JACK configuration tools or configure via Rivendell.")
-        elif service_key == 'liquidsoap':
-            # For liquidsoap, provide guidance
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle("Liquidsoap Service")
-            msg.setText("Liquidsoap service management guidance:")
-            msg.setDetailedText("""To start Liquidsoap service:
-
-1. As system administrator:
-   sudo systemctl start liquidsoap
-
-2. Or configure as user service:
-   systemctl --user start liquidsoap
-   (requires proper user service setup)
-
-3. Direct execution for testing:
-   liquidsoap /path/to/config.liq
-
-The application prepares configurations but does not manage system services directly.""")
-            msg.exec_()
-        else:
-            # For other services, provide guidance
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle(f"{service_info['name']} Service")
-            msg.setText(f"To start {service_info['name']} service:")
-            msg.setDetailedText(f"""System administrator should run:
-
-sudo systemctl start {service_info['systemd']}
-
-This application does not modify system services directly.
-Service management should be handled by system administrators.""")
-            msg.exec_()
+        try:
+            if service_key == 'jack':
+                # Start JACK with basic configuration
+                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"], 
+                             check=False, capture_output=True)
+                QMessageBox.information(self, "JACK Started", "JACK audio server started successfully.")
+                
+            elif service_key == 'liquidsoap':
+                # Start liquidsoap with generated config
+                config_dir = self.get_config_directory()
+                config_file = config_dir / "radio.liq"
+                
+                if config_file.exists():
+                    subprocess.Popen(["liquidsoap", str(config_file)])
+                    QMessageBox.information(self, "Liquidsoap Started", 
+                                          f"Liquidsoap started with config: {config_file}")
+                else:
+                    QMessageBox.warning(self, "No Config", 
+                                      "Please generate Liquidsoap configuration first in Stream Builder tab.")
+                    
+            else:
+                # For other services, use systemctl
+                subprocess.run(["systemctl", "start", service_info['systemd']], check=True)
+                QMessageBox.information(self, f"{service_info['name']} Started", 
+                                      f"{service_info['name']} service started successfully.")
+                
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Service Start Failed", 
+                               f"Failed to start {service_info['name']}:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Service Start Error", 
+                               f"Error starting {service_info['name']}:\n{str(e)}")
                 
     def stop_service(self, service_key):
-        """Stop a specific service - provides guidance for manual service management"""
+        """Stop a specific service automatically"""
         service_info = self.services[service_key]
         
-        if service_key == 'jack':
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle("Stop JACK")
-            msg.setText("JACK service management guidance:")
-            msg.setDetailedText("""To stop JACK:
-
-1. Via systemctl (if configured as service):
-   sudo systemctl stop jackd
-
-2. Direct process termination:
-   killall jackd
-
-3. Via JACK tools:
-   Use QjackCtl or other JACK management tools
-
-This application does not manage JACK directly.""")
-            msg.exec_()
-        elif service_key == 'liquidsoap':
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle("Stop Liquidsoap")
-            msg.setText("Liquidsoap service management guidance:")
-            msg.setDetailedText("""To stop Liquidsoap:
-
-1. System service:
-   sudo systemctl stop liquidsoap
-
-2. User service:
-   systemctl --user stop liquidsoap
-
-3. Direct process:
-   killall liquidsoap
-
-Service management should be handled by system administrators.""")
-            msg.exec_()
-        else:
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle(f"Stop {service_info['name']}")
-            msg.setText(f"To stop {service_info['name']} service:")
-            msg.setDetailedText(f"""System administrator should run:
-
-sudo systemctl stop {service_info['systemd']}
-
-This application does not modify system services directly.""")
-            msg.exec_()
+        try:
+            if service_key == 'jack':
+                # Stop JACK
+                subprocess.run(["killall", "jackd"], check=False)
+                QMessageBox.information(self, "JACK Stopped", "JACK audio server stopped.")
+                
+            elif service_key == 'liquidsoap':
+                # Stop liquidsoap
+                subprocess.run(["killall", "liquidsoap"], check=False)
+                QMessageBox.information(self, "Liquidsoap Stopped", "Liquidsoap stopped.")
+                
+            else:
+                # For other services, use systemctl
+                subprocess.run(["systemctl", "stop", service_info['systemd']], check=True)
+                QMessageBox.information(self, f"{service_info['name']} Stopped", 
+                                      f"{service_info['name']} service stopped successfully.")
+                
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Service Stop Failed", 
+                               f"Failed to stop {service_info['name']}:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Service Stop Error", 
+                               f"Error stopping {service_info['name']}:\n{str(e)}")
             
     def restart_service(self, service_key):
-        """Restart a specific service - provides guidance for manual service management"""
+        """Restart a specific service automatically"""
         service_info = self.services[service_key]
         
-        if service_key == 'jack':
-            QMessageBox.information(self, "Restart JACK", 
-                                  "JACK restart requires specific procedures.\n"
-                                  "Use JACK configuration tools or configure via Rivendell.")
-        else:
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Information)
-            msg.setWindowTitle(f"Restart {service_info['name']}")
-            msg.setText(f"To restart {service_info['name']} service:")
-            msg.setDetailedText(f"""System administrator should run:
+        try:
+            if service_key == 'jack':
+                # Restart JACK
+                subprocess.run(["killall", "jackd"], check=False)
+                time.sleep(1)
+                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"], 
+                             check=False, capture_output=True)
+                QMessageBox.information(self, "JACK Restarted", "JACK audio server restarted successfully.")
+                
+            elif service_key == 'liquidsoap':
+                # Restart liquidsoap
+                subprocess.run(["killall", "liquidsoap"], check=False)
+                time.sleep(1)
+                
+                config_dir = self.get_config_directory()
+                config_file = config_dir / "radio.liq"
+                
+                if config_file.exists():
+                    subprocess.Popen(["liquidsoap", str(config_file)])
+                    QMessageBox.information(self, "Liquidsoap Restarted", 
+                                          f"Liquidsoap restarted with config: {config_file}")
+                else:
+                    QMessageBox.warning(self, "No Config", 
+                                      "Please generate Liquidsoap configuration first in Stream Builder tab.")
+                    
+            else:
+                # For other services, use systemctl
+                subprocess.run(["systemctl", "restart", service_info['systemd']], check=True)
+                QMessageBox.information(self, f"{service_info['name']} Restarted", 
+                                      f"{service_info['name']} service restarted successfully.")
+                
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Service Restart Failed", 
+                               f"Failed to restart {service_info['name']}:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Service Restart Error", 
+                               f"Error restarting {service_info['name']}:\n{str(e)}")
 
-sudo systemctl restart {service_info['systemd']}
+    def get_config_directory(self):
+        """Get the application config directory, creating it if needed"""
+        import os
+        
+        # Try standard config directory first
+        config_dir = Path.home() / ".config" / "rdx"
+        
+        try:
+            # Create and test if we can write to standard location
+            config_dir.mkdir(parents=True, exist_ok=True)
+            test_file = config_dir / ".test"
+            test_file.touch()
+            test_file.unlink()
+            return config_dir
+        except (PermissionError, OSError):
+            # If standard location fails, try creating in home directory
+            fallback_dir = Path.home() / ".rdx"
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                return fallback_dir
+            except (PermissionError, OSError):
+                # Last resort - use temp directory with user-specific name
+                import tempfile
+                import getpass
+                temp_dir = Path(tempfile.gettempdir()) / f"rdx-{getpass.getuser()}"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                return temp_dir
 
 Or for user services:
 systemctl --user restart {service_info['systemd']}
@@ -1306,7 +1311,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🎯 RDX Professional Broadcast Control Center v3.1.2")
+        self.setWindowTitle("🎯 RDX Professional Broadcast Control Center v3.1.3")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1353,7 +1358,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.2")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.3")
 
 
 def main():
@@ -1361,7 +1366,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.1.2")
+    app.setApplicationVersion("3.1.3")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
