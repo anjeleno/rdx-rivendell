@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.1.6
+RDX Professional Broadcast Control Center v3.1.7
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -731,30 +731,46 @@ class IcecastManagementTab(QWidget):
             return
             
         try:
-            # Use pkexec for GUI-based sudo operations (PolicyKit)
-            # This will show a proper GUI password prompt
+            # Create a temporary script to execute all privileged operations in one pkexec call
+            # This prevents multiple authentication prompts
+            temp_script = config_dir / "deploy_icecast_temp.sh"
+            script_content = f'''#!/bin/bash
+set -e
+
+# Stop Icecast if running
+systemctl stop icecast2 2>/dev/null || true
+
+# Backup original config if it exists
+if [ -f "/etc/icecast2/icecast.xml" ]; then
+    cp "/etc/icecast2/icecast.xml" "/etc/icecast2/icecast.xml.backup"
+fi
+
+# Apply configuration by copying to system location
+cp "{config_file}" "/etc/icecast2/icecast.xml"
+
+# Set proper ownership and permissions
+chown root:icecast "/etc/icecast2/icecast.xml"
+chmod 640 "/etc/icecast2/icecast.xml"
+
+# Start Icecast with new configuration
+systemctl start icecast2
+
+echo "SUCCESS: Icecast configuration deployed and service restarted"
+'''
             
-            # Stop Icecast if running
-            stop_result = subprocess.run(["pkexec", "systemctl", "stop", "icecast2"], 
-                                       capture_output=True, text=True, check=False)
+            # Write the temporary script
+            with open(temp_script, 'w') as f:
+                f.write(script_content)
             
-            # Backup original config
-            backup_result = subprocess.run(["pkexec", "cp", "/etc/icecast2/icecast.xml", "/etc/icecast2/icecast.xml.backup"], 
-                                         capture_output=True, text=True, check=False)
+            # Make script executable
+            temp_script.chmod(0o755)
             
-            # Apply configuration by copying to system location
-            copy_result = subprocess.run(["pkexec", "cp", str(config_file), "/etc/icecast2/icecast.xml"], 
-                                       capture_output=True, text=True, check=True)
+            # Execute the script with pkexec (single authentication prompt)
+            result = subprocess.run(["pkexec", str(temp_script)], 
+                                  capture_output=True, text=True, check=True)
             
-            # Set proper ownership and permissions
-            chown_result = subprocess.run(["pkexec", "chown", "root:icecast", "/etc/icecast2/icecast.xml"], 
-                                        capture_output=True, text=True, check=False)
-            chmod_result = subprocess.run(["pkexec", "chmod", "640", "/etc/icecast2/icecast.xml"], 
-                                        capture_output=True, text=True, check=False)
-            
-            # Start Icecast with new configuration
-            start_result = subprocess.run(["pkexec", "systemctl", "start", "icecast2"], 
-                                        capture_output=True, text=True, check=True)
+            # Clean up temporary script
+            temp_script.unlink()
             
             QMessageBox.information(self, "Configuration Applied", 
                                   f"Icecast configuration applied and service restarted successfully!\n\n"
@@ -765,6 +781,11 @@ class IcecastManagementTab(QWidget):
                                   f"Backup saved: /etc/icecast2/icecast.xml.backup")
                                   
         except subprocess.CalledProcessError as e:
+            # Clean up temporary script if it exists
+            temp_script = config_dir / "deploy_icecast_temp.sh"
+            if temp_script.exists():
+                temp_script.unlink()
+                
             error_details = f"Command: {' '.join(e.cmd)}\n"
             error_details += f"Exit code: {e.returncode}\n"
             if e.stdout:
@@ -782,6 +803,11 @@ class IcecastManagementTab(QWidget):
                                f"Source file: {config_file}\n"
                                f"Target: /etc/icecast2/icecast.xml")
         except Exception as e:
+            # Clean up temporary script if it exists
+            temp_script = config_dir / "deploy_icecast_temp.sh"
+            if temp_script.exists():
+                temp_script.unlink()
+                
             QMessageBox.critical(self, "Configuration Error", 
                                f"Error applying configuration:\n{str(e)}")
 
@@ -1347,7 +1373,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.1.6")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.1.7")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1394,7 +1420,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.6")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.7")
 
 
 def main():
@@ -1402,7 +1428,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.1.6")
+    app.setApplicationVersion("3.1.7")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

@@ -1,5 +1,18 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.1.7 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed PolicyKit authentication loop in Icecast config deployment
+  - Combined all privileged operations into single script executed with one `pkexec` call
+  - Eliminated multiple authentication prompts that caused authentication loops
+  - Added proper temporary script cleanup and error handling
+  - Streamlined deployment process for better user experience
+
+### Technical Improvements
+- Single authentication prompt for entire Icecast deployment process
+- Enhanced error handling with automatic cleanup of temporary files
+- More robust privilege escalation with consolidated operations
+
 ## v3.1.6 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed GUI sudo authentication for Icecast config deployment
