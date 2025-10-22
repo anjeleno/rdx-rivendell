@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.1.3
+RDX Professional Broadcast Control Center v3.1.4
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1255,12 +1255,6 @@ class ServiceControlTab(QWidget):
                 temp_dir = Path(tempfile.gettempdir()) / f"rdx-{getpass.getuser()}"
                 temp_dir.mkdir(parents=True, exist_ok=True)
                 return temp_dir
-
-Or for user services:
-systemctl --user restart {service_info['systemd']}
-
-This application provides configuration guidance but does not manage system services directly.""")
-            msg.exec_()
                 
     def configure_service(self, service_key):
         """Configure a specific service"""
@@ -1311,7 +1305,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🎯 RDX Professional Broadcast Control Center v3.1.3")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.1.4")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1323,19 +1317,19 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout = QVBoxLayout(central_widget)
         
         # Header
-        header = QLabel("🎯 RDX Professional Broadcast Control Center")
+        header = QLabel("RDX Professional Broadcast Control Center")
         header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet("""
-            QLabel { 
-                font-size: 20px; 
-                font-weight: bold; 
-                padding: 15px;
-                background-color: #2c3e50;
-                color: white;
-                border-radius: 8px;
-                margin-bottom: 10px;
-            }
-        """)
+        header.setStyleSheet(
+            "QLabel { "
+            "font-size: 20px; "
+            "font-weight: bold; "
+            "padding: 15px; "
+            "background-color: #2c3e50; "
+            "color: white; "
+            "border-radius: 8px; "
+            "margin-bottom: 10px; "
+            "}"
+        )
         layout.addWidget(header)
         
         # Tab widget
@@ -1358,7 +1352,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.3")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.4")
 
 
 def main():
@@ -1366,7 +1360,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.1.3")
+    app.setApplicationVersion("3.1.4")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
