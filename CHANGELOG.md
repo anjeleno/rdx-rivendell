@@ -7,6 +7,13 @@
 ### Notes
 - No functional changes beyond syntax fixes; retains guided FFmpeg plugin installer and preflight sanitizers
 
+## v3.2.20 (2025-10-22)
+### Fixed
+- Finalize indentation normalization for main window init and UI setup to ensure consistent behavior when launched via desktop shortcuts across environments
+
+### Packaging
+- Rebuilt and published 3.2.20 to ensure the corrected script is propagated cleanly
+
 ## v3.2.18 (2025-10-22)
 ### Fixed
 - Resolved Python SyntaxError/indentation issues introduced during installer integration

@@ -613,7 +613,7 @@ https://www.thimeo.com/stereo-tool/download/
 
 Also, advanced users (like myself) may have several versions of Stereo Tool for testing new features or using deprecated ones, etc. What would be really helpful is if we can have a Stereo Tool field to set the path of each version and then toggle which one is active at any given time when we launch RDX. Potentially move Stereo Tool to /home/[user]/.config/rdx/processing. Maybe default to one path with a button to add another Stereo Tool Instance?
 
-And what's the most relaible approach to launch/switch/manage the active Stereo Tool instance? systemd service?
+And what's the most relaible approach to launch/switch/manage the active Stereo Tool instance? systemd service? RDX will be running on mission critical machines.
 
 Upon launching RDX for the chain to work properly, services need to start in the following order:
 - Jack (should detect and mount Rivendell)
