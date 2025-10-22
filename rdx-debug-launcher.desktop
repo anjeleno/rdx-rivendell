@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=🔍 RDX Debug Launcher
+Comment=Debug launcher for RDX Broadcast Control Center with error reporting
+Exec=gnome-terminal -- rdx-control-center-debug
+Icon=utilities-terminal
+Terminal=false
+Categories=AudioVideo;Audio;AudioVideoEditing;Development;
+Keywords=broadcast;streaming;debug;rdx;
+StartupNotify=true
+StartupWMClass=rdx-debug

@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.0.2"
+PACKAGE_VERSION="3.0.3"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -41,17 +41,110 @@ chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py"
 # Copy desktop entry
 echo "🖥️ Installing desktop integration..."
 cp "$RDX_ROOT/rdx-broadcast-control-center.desktop" "$PACKAGE_DIR/usr/share/applications/"
+cp "$RDX_ROOT/rdx-debug-launcher.desktop" "$PACKAGE_DIR/usr/share/applications/"
 
-# Create wrapper script for easier launching
+# Create wrapper script for easier launching with error handling
 cat > "$PACKAGE_DIR/usr/local/bin/rdx-control-center" << 'EOF'
 #!/bin/bash
-# RDX Broadcast Control Center Launcher
+# RDX Broadcast Control Center Launcher with Error Handling
 
-export DISPLAY=${DISPLAY:-:0}
-cd /home/rd
-exec python3 /usr/local/bin/rdx-broadcast-control-center.py "$@"
+# Enable debug mode if DEBUG=1
+if [ "$DEBUG" = "1" ]; then
+    set -x
+fi
+
+# Function to log errors
+log_error() {
+    echo "$(date): $1" >> /var/log/rdx-launcher.log 2>/dev/null || \
+    echo "$(date): $1" >> /tmp/rdx-launcher.log
+}
+
+# Function to show error dialog if GUI available
+show_error() {
+    local message="$1"
+    log_error "$message"
+    
+    # Try to show GUI error dialog
+    if command -v zenity >/dev/null 2>&1; then
+        zenity --error --text="RDX Error: $message" 2>/dev/null &
+    elif command -v kdialog >/dev/null 2>&1; then
+        kdialog --error "$message" 2>/dev/null &
+    elif command -v notify-send >/dev/null 2>&1; then
+        notify-send "RDX Error" "$message" 2>/dev/null &
+    fi
+    
+    # Also print to stderr
+    echo "ERROR: $message" >&2
+}
+
+# Check if running in GUI environment
+if [ -z "$DISPLAY" ]; then
+    export DISPLAY=:0
+    log_error "No DISPLAY set, defaulting to :0"
+fi
+
+# Test if DISPLAY is accessible
+if ! xset q >/dev/null 2>&1; then
+    show_error "Cannot connect to X11 display. Make sure you're in a GUI session."
+    exit 1
+fi
+
+# Check Python3 availability
+if ! command -v python3 >/dev/null 2>&1; then
+    show_error "Python3 not found. Please install python3."
+    exit 1
+fi
+
+# Check PyQt5 availability
+if ! python3 -c "import PyQt5" >/dev/null 2>&1; then
+    show_error "PyQt5 not available. Please install python3-pyqt5."
+    exit 1
+fi
+
+# Check if main script exists
+if [ ! -f "/usr/local/bin/rdx-broadcast-control-center.py" ]; then
+    show_error "RDX application file not found. Please reinstall RDX."
+    exit 1
+fi
+
+# Change to home directory
+cd /home/rd 2>/dev/null || cd /tmp
+
+# Launch with error capture
+log_error "Starting RDX Broadcast Control Center"
+
+# Try to launch and capture any Python errors
+if ! python3 /usr/local/bin/rdx-broadcast-control-center.py "$@" 2>/tmp/rdx-python-error.log; then
+    PYTHON_ERROR=$(cat /tmp/rdx-python-error.log 2>/dev/null || echo "Unknown Python error")
+    show_error "Failed to start RDX: $PYTHON_ERROR"
+    exit 1
+fi
 EOF
 chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-control-center"
+
+# Create debug launcher
+cat > "$PACKAGE_DIR/usr/local/bin/rdx-control-center-debug" << 'EOF'
+#!/bin/bash
+# RDX Debug Launcher - Shows all errors in terminal
+
+echo "🔍 RDX Debug Launcher"
+echo "===================="
+
+# Export debug mode
+export DEBUG=1
+
+# Check environment
+echo "🖥️  Display: $DISPLAY"
+echo "🐍 Python: $(python3 --version 2>&1)"
+echo "📦 PyQt5: $(python3 -c 'import PyQt5; print("Available")' 2>&1)"
+echo "🏠 Home: $HOME"
+echo "👤 User: $(whoami)"
+echo ""
+
+# Run with debug output
+exec /usr/local/bin/rdx-control-center "$@"
+EOF
+chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-control-center-debug"
 
 # Create configuration directory with examples
 echo "⚙️ Setting up configuration..."
