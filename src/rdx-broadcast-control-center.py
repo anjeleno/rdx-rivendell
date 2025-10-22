@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.2
+RDX Professional Broadcast Control Center v3.2.3
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -227,47 +227,50 @@ class StreamBuilderTab(QWidget):
         """Get the application config directory, creating it if needed with proper ownership"""
         import os
         import getpass
+        import pwd
+        import grp
         
-        # Force standard config directory - no fallbacks to avoid confusion
+        # Always use standard config directory - no fallbacks
         config_dir = Path.home() / ".config" / "rdx"
         
         try:
-            # Create directory structure
-            config_dir.mkdir(parents=True, exist_ok=True)
+            current_user = getpass.getuser()
+            user_info = pwd.getpwnam(current_user)
+            user_uid = user_info.pw_uid
+            user_gid = user_info.pw_gid
             
-            # Ensure proper ownership for the config directory
+            # Ensure parent .config directory exists and has correct ownership
+            config_parent = config_dir.parent
+            config_parent.mkdir(parents=True, exist_ok=True)
             try:
-                current_user = getpass.getuser()
-                # Get user and group info
-                import pwd
-                import grp
-                user_info = pwd.getpwnam(current_user)
-                user_uid = user_info.pw_uid
-                user_gid = user_info.pw_gid
-                
-                # Set ownership to current user
-                os.chown(config_dir, user_uid, user_gid)
-                
-                # Also fix parent .config directory if needed
-                config_parent = config_dir.parent
-                if config_parent.exists():
-                    try:
-                        os.chown(config_parent, user_uid, user_gid)
-                    except (PermissionError, OSError):
-                        pass  # Ignore if we can't fix parent
-                        
-            except (PermissionError, OSError, ImportError, KeyError):
-                pass  # Ignore ownership errors, directory creation worked
+                os.chown(config_parent, user_uid, user_gid)
+            except (PermissionError, OSError):
+                # If we can't fix .config ownership, try to continue anyway
+                pass
+            
+            # Create and fix ownership of rdx directory
+            config_dir.mkdir(parents=True, exist_ok=True)
+            os.chown(config_dir, user_uid, user_gid)
+            
+            # Set proper permissions (755 for directory)
+            config_dir.chmod(0o755)
             
             # Test write access
             test_file = config_dir / ".test"
             test_file.touch()
             test_file.unlink()
+            
             return config_dir
             
         except (PermissionError, OSError) as e:
-            # If we can't create or write to .config/rdx, there's a serious problem
-            # Don't fall back to .rdx as it causes confusion
+            # Try to provide helpful error message and recovery
+            error_msg = f"Cannot create or access config directory {config_dir}: {e}\n\n"
+            error_msg += "To fix this manually:\n"
+            error_msg += f"sudo mkdir -p {config_dir}\n"
+            error_msg += f"sudo chown {current_user}:{current_user} {config_dir}\n"
+            error_msg += f"sudo chown {current_user}:{current_user} {config_parent}\n"
+            error_msg += f"sudo chmod 755 {config_dir}\n"
+            raise Exception(error_msg)
             raise Exception(f"Cannot create config directory {config_dir}: {e}\nCheck permissions on ~/.config/")
             
     def load_streams(self):
@@ -882,39 +885,50 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
         """Get the application config directory, creating it if needed with proper ownership"""
         import os
         import getpass
+        import pwd
+        import grp
         
-        # Force standard config directory - no fallbacks to avoid confusion
+        # Always use standard config directory - no fallbacks
         config_dir = Path.home() / ".config" / "rdx"
         
         try:
-            # Create directory structure
-            config_dir.mkdir(parents=True, exist_ok=True)
+            current_user = getpass.getuser()
+            user_info = pwd.getpwnam(current_user)
+            user_uid = user_info.pw_uid
+            user_gid = user_info.pw_gid
             
-            # Ensure proper ownership for the config directory
+            # Ensure parent .config directory exists and has correct ownership
+            config_parent = config_dir.parent
+            config_parent.mkdir(parents=True, exist_ok=True)
             try:
-                current_user = getpass.getuser()
-                # Get user and group info
-                import pwd
-                import grp
-                user_info = pwd.getpwnam(current_user)
-                user_uid = user_info.pw_uid
-                user_gid = user_info.pw_gid
-                
-                # Set ownership to current user
-                os.chown(config_dir, user_uid, user_gid)
-                
-                # Also fix parent .config directory if needed
-                config_parent = config_dir.parent
-                if config_parent.exists():
-                    try:
-                        os.chown(config_parent, user_uid, user_gid)
-                    except (PermissionError, OSError):
-                        pass  # Ignore if we can't fix parent
-                        
-            except (PermissionError, OSError, ImportError, KeyError):
-                pass  # Ignore ownership errors, directory creation worked
+                os.chown(config_parent, user_uid, user_gid)
+            except (PermissionError, OSError):
+                # If we can't fix .config ownership, try to continue anyway
+                pass
+            
+            # Create and fix ownership of rdx directory
+            config_dir.mkdir(parents=True, exist_ok=True)
+            os.chown(config_dir, user_uid, user_gid)
+            
+            # Set proper permissions (755 for directory)
+            config_dir.chmod(0o755)
             
             # Test write access
+            test_file = config_dir / ".test"
+            test_file.touch()
+            test_file.unlink()
+            
+            return config_dir
+            
+        except (PermissionError, OSError) as e:
+            # Try to provide helpful error message and recovery
+            error_msg = f"Cannot create or access config directory {config_dir}: {e}\n\n"
+            error_msg += "To fix this manually:\n"
+            error_msg += f"sudo mkdir -p {config_dir}\n"
+            error_msg += f"sudo chown {current_user}:{current_user} {config_dir}\n"
+            error_msg += f"sudo chown {current_user}:{current_user} {config_parent}\n"
+            error_msg += f"sudo chmod 755 {config_dir}\n"
+            raise Exception(error_msg)
             test_file = config_dir / ".test"
             test_file.touch()
             test_file.unlink()
@@ -1474,7 +1488,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.2")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.3")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1521,7 +1535,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.2")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.3")
 
 
 def main():
@@ -1529,7 +1543,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.2")
+    app.setApplicationVersion("3.2.3")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

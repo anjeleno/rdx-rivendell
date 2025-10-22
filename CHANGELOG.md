@@ -1,5 +1,25 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.3 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed config directory permissions issue preventing stream loading
+- **IMPROVED**: More robust ownership and permissions handling for `~/.config/rdx`
+- **ENHANCED**: Better error messages with manual fix instructions for permission problems
+- **ELIMINATED**: Fallback directories - exclusively uses `~/.config/rdx` with proper ownership
+
+### Technical Improvements
+- **Aggressive Permissions Fix**: Forces correct user:user ownership on config directories
+- **Parent Directory Fix**: Ensures `.config` parent directory has correct ownership
+- **Explicit Permissions**: Sets directory permissions to 755 explicitly
+- **Better Error Recovery**: Provides clear manual fix commands when permissions fail
+- **No Fallbacks**: Removed confusing fallback paths that caused ownership issues
+
+### Permission Fix Details
+- Forces creation of `~/.config/rdx` with correct user ownership
+- Fixes parent `~/.config` directory ownership if needed
+- Sets explicit 755 permissions on config directory
+- Provides manual fix commands if automatic fixes fail
+
 ## v3.2.2 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed Python syntax error (IndentationError) that prevented application startup
