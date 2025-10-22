@@ -51,6 +51,21 @@ class StreamBuilderTab(QWidget):
         self.mount_input.setPlaceholderText("/example")
         builder_layout.addRow("Mount Point:", self.mount_input)
         
+        # Station name input
+        self.station_name_input = QLineEdit()
+        self.station_name_input.setPlaceholderText(":: Station Name :: Station Slogan ::")
+        builder_layout.addRow("Station Name:", self.station_name_input)
+        
+        # Genre input
+        self.genre_input = QLineEdit()
+        self.genre_input.setPlaceholderText("Rock, Pop, Jazz, etc.")
+        builder_layout.addRow("Genre:", self.genre_input)
+        
+        # Description input
+        self.description_input = QLineEdit()
+        self.description_input.setPlaceholderText("Optional Description")
+        builder_layout.addRow("Description:", self.description_input)
+        
         # Add stream button
         add_btn = QPushButton("🎵 ADD STREAM")
         add_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
@@ -65,8 +80,8 @@ class StreamBuilderTab(QWidget):
         
         # Streams table
         self.streams_table = QTableWidget()
-        self.streams_table.setColumnCount(4)
-        self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Actions"])
+        self.streams_table.setColumnCount(7)
+        self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description", "Actions"])
         self.streams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         streams_layout.addWidget(self.streams_table)
         
@@ -113,12 +128,19 @@ class StreamBuilderTab(QWidget):
         codec = self.codec_combo.currentText()
         bitrate = self.bitrate_combo.currentText()
         mount = self.mount_input.text().strip()
+        station_name = self.station_name_input.text().strip()
+        genre = self.genre_input.text().strip()
+        description = self.description_input.text().strip()
         
         if not mount.startswith('/'):
             mount = '/' + mount
             
         if not mount or mount == '/':
             QMessageBox.warning(self, "Invalid Mount", "Please enter a valid mount point (e.g., /mp3-320)")
+            return
+            
+        if not station_name:
+            QMessageBox.warning(self, "Missing Station Name", "Please enter a station name")
             return
             
         # Check for duplicate mounts
@@ -131,7 +153,10 @@ class StreamBuilderTab(QWidget):
         stream = {
             'codec': codec,
             'bitrate': bitrate,
-            'mount': mount
+            'mount': mount,
+            'station_name': station_name,
+            'genre': genre if genre else 'Various',
+            'description': description if description else f'{codec} stream at {bitrate}'
         }
         self.streams.append(stream)
         
@@ -140,6 +165,9 @@ class StreamBuilderTab(QWidget):
         
         # Clear inputs
         self.mount_input.clear()
+        self.station_name_input.clear()
+        self.genre_input.clear()
+        self.description_input.clear()
         
         self.status_text.append(f"✅ Added stream: {codec} {bitrate} → {mount}")
         
@@ -151,12 +179,15 @@ class StreamBuilderTab(QWidget):
             self.streams_table.setItem(row, 0, QTableWidgetItem(stream['codec']))
             self.streams_table.setItem(row, 1, QTableWidgetItem(stream['bitrate']))
             self.streams_table.setItem(row, 2, QTableWidgetItem(stream['mount']))
+            self.streams_table.setItem(row, 3, QTableWidgetItem(stream.get('station_name', '')))
+            self.streams_table.setItem(row, 4, QTableWidgetItem(stream.get('genre', '')))
+            self.streams_table.setItem(row, 5, QTableWidgetItem(stream.get('description', '')))
             
             # Remove button
             remove_btn = QPushButton("🗑️ Remove")
             remove_btn.setStyleSheet("QPushButton { background-color: #e74c3c; color: white; }")
             remove_btn.clicked.connect(lambda checked, r=row: self.remove_stream(r))
-            self.streams_table.setCellWidget(row, 3, remove_btn)
+            self.streams_table.setCellWidget(row, 6, remove_btn)
             
     def remove_stream(self, row):
         """Remove a stream configuration"""
@@ -208,6 +239,7 @@ radio = mksafe(radio)
         # Add output for each stream
         for stream in self.streams:
             codec_config = self.get_codec_config(stream['codec'], stream['bitrate'])
+            mount_name = stream['mount'].lstrip('/')  # Remove leading slash for url field
             config += f'''
 # {stream['codec']} {stream['bitrate']} stream
 output.icecast(
@@ -216,10 +248,10 @@ output.icecast(
   port=8000,
   password="hackm3",
   mount="{stream['mount']}",
-  genre="Electronic",
-  url="Stream",
-  name=":: Station Name :: {stream['codec']} {stream['bitrate']} ::",
-  description="",
+  genre="{stream.get('genre', 'Various')}",
+  url="{mount_name}",
+  name="{stream.get('station_name', 'RDX Station')}",
+  description="{stream.get('description', f'{stream["codec"]} stream at {stream["bitrate"]}')}",
   radio
 )
 '''
@@ -417,16 +449,37 @@ class IcecastManagementTab(QWidget):
             QMessageBox.critical(self, "Config Error", f"Failed to generate config:\n{str(e)}")
             
     def build_icecast_config(self):
-        """Build Icecast XML configuration"""
+        """Build Icecast XML configuration with comprehensive template"""
         host = self.host_input.text()
         port = self.port_input.value()
         source_pass = self.source_password.text()
         admin_pass = self.admin_password.text()
         relay_pass = self.relay_password.text()
         
+        # Build shoutcast-mounts from configured streams
+        shoutcast_mounts = ""
+        if hasattr(self.parent(), 'stream_builder') and hasattr(self.parent().stream_builder, 'streams'):
+            for stream in self.parent().stream_builder.streams:
+                mount_path = stream['mount']
+                shoutcast_mounts += f'        <shoutcast-mount>{mount_path}</shoutcast-mount>\n'
+        
+        # Add default mounts if no streams configured
+        if not shoutcast_mounts:
+            shoutcast_mounts = '        <shoutcast-mount>/192</shoutcast-mount>\n        <shoutcast-mount>/stream</shoutcast-mount>\n'
+        
         config = f'''<icecast>
-    <location>Broadcast Station</location>
-    <admin>admin@{host}</admin>
+    <!-- location and admin are two arbitrary strings that are e.g. visible
+         on the server info page of the icecast web interface
+         (server_version.xsl). -->
+    <location>Earth</location>
+    <admin>icemaster@{host}</admin>
+
+    <!-- IMPORTANT!
+         Especially for inexperienced users:
+         Start out by ONLY changing all passwords and restarting Icecast.
+         For detailed setup instructions please refer to the documentation.
+         It's also available here: http://icecast.org/docs/
+    -->
 
     <limits>
         <clients>100</clients>
@@ -435,44 +488,157 @@ class IcecastManagementTab(QWidget):
         <client-timeout>30</client-timeout>
         <header-timeout>15</header-timeout>
         <source-timeout>10</source-timeout>
+        <!-- If enabled, this will provide a burst of data when a client 
+             first connects, thereby significantly reducing the startup 
+             time for listeners that do substantial buffering. However,
+             it also significantly increases latency between the source
+             client and listening client.  For low-latency setups, you
+             might want to disable this. -->
         <burst-on-connect>1</burst-on-connect>
+        <!-- same as burst-on-connect, but this allows for being more
+             specific on how much to burst. Most people won't need to
+             change from the default 64k. Applies to all mountpoints  -->
         <burst-size>65535</burst-size>
     </limits>
 
     <authentication>
+        <!-- Sources log in with username 'source' -->
         <source-password>{source_pass}</source-password>
+        <!-- Relays log in with username 'relay' -->
         <relay-password>{relay_pass}</relay-password>
+
+        <!-- Admin logs in with the username given below -->
         <admin-user>admin</admin-user>
         <admin-password>{admin_pass}</admin-password>
     </authentication>
 
+    <!-- set the mountpoint for a shoutcast source to use, the default if not
+         specified is /stream but you can change it here if an alternative is
+         wanted or an extension is required
+    <shoutcast-mount>/live.nsv</shoutcast-mount>
+    -->
+
+    <!-- Uncomment this if you want directory listings -->
+    <!--
+    <directory>
+        <yp-url-timeout>15</yp-url-timeout>
+        <yp-url>http://dir.xiph.org/cgi-bin/yp-cgi</yp-url>
+    </directory>
+    -->
+
+    <!-- This is the hostname other people will use to connect to your server.
+         It affects mainly the urls generated by Icecast for playlists and yp
+         listings. You MUST configure it properly for YP listings to work!
+    -->
     <hostname>{host}</hostname>
 
+    <!-- You may have multiple <listen-socket> elements -->
     <listen-socket>
         <port>{port}</port>
+{shoutcast_mounts.rstrip()}
+        <!-- <bind-address>127.0.0.1</bind-address> -->
     </listen-socket>
 
+    <!-- Global header settings 
+         Headers defined here will be returned for every HTTP request to Icecast.
+
+         The ACAO header makes Icecast public content/API by default
+         This will make streams easier embeddable (some HTML5 functionality needs it).
+         Also it allows direct access to e.g. /status-json.xsl from other sites.
+         If you don't want this, comment out the following line or read up on CORS. 
+    -->
     <http-headers>
         <header name="Access-Control-Allow-Origin" value="*" />
     </http-headers>
 
+    <!-- Relaying
+         You don't need this if you only have one server.
+         Please refer to the documentation for a detailed explanation.
+    -->
+    <!--<master-server>127.0.0.1</master-server>-->
+    <!--<master-server-port>8001</master-server-port>-->
+    <!--<master-update-interval>120</master-update-interval>-->
+    <!--<master-password>hackme</master-password>-->
+
+    <!-- setting this makes all relays on-demand unless overridden, this is
+         useful for master relays which do not have <relay> definitions here.
+         The default is 0 -->
+    <!--<relays-on-demand>1</relays-on-demand>-->
+
+    <!-- Mountpoints
+         Only define <mount> sections if you want to use advanced options,
+         like alternative usernames or passwords
+    -->
+
+    <!-- Default settings for all mounts that don't have a specific <mount type="normal">.
+    -->
+    <!-- 
+    <mount type="default">
+        <public>0</public>
+        <intro>/server-wide-intro.ogg</intro>
+        <max-listener-duration>3600</max-listener-duration>
+        <authentication type="url">
+                <option name="mount_add" value="http://auth.example.org/stream_start.php"/>
+        </authentication>
+        <http-headers>
+                <header name="foo" value="bar" />
+        </http-headers>
+    </mount>
+    -->
+
+    <fileserve>1</fileserve>
+
     <paths>
+        <!-- basedir is only used if chroot is enabled -->
         <basedir>/usr/share/icecast2</basedir>
+
+        <!-- Note that if <chroot> is turned on below, these paths must both
+             be relative to the new root, not the original root -->
         <logdir>/var/log/icecast2</logdir>
         <webroot>/usr/share/icecast2/web</webroot>
         <adminroot>/usr/share/icecast2/admin</adminroot>
+        <!-- <pidfile>/usr/share/icecast2/icecast.pid</pidfile> -->
+
+        <!-- Aliases: treat requests for 'source' path as being for 'dest' path
+             May be made specific to a port or bound address using the "port"
+             and "bind-address" attributes.
+          -->
+        <!--
+        <alias source="/foo" destination="/bar"/>
+        -->
+        <!-- Aliases: can also be used for simple redirections as well,
+             this example will redirect all requests for http://server:port/ to
+             the status page
+        -->
         <alias source="/" destination="/status.xsl"/>
+        <!-- The certificate file needs to contain both public and private part.
+             Both should be PEM encoded.
+        <ssl-certificate>/usr/share/icecast2/icecast.pem</ssl-certificate>
+        -->
     </paths>
 
     <logging>
         <accesslog>access.log</accesslog>
         <errorlog>error.log</errorlog>
-        <loglevel>3</loglevel>
-        <logsize>10000</logsize>
+        <!-- <playlistlog>playlist.log</playlistlog> -->
+        <loglevel>3</loglevel> <!-- 4 Debug, 3 Info, 2 Warn, 1 Error -->
+        <logsize>10000</logsize> <!-- Max size of a logfile -->
+        <!-- If logarchive is enabled (1), then when logsize is reached
+             the logfile will be moved to [error|access|playlist].log.DATESTAMP,
+             otherwise it will be moved to [error|access|playlist].log.old.
+             Default is non-archive mode (i.e. overwrite)
+        -->
+        <!-- <logarchive>1</logarchive> -->
     </logging>
 
     <security>
         <chroot>0</chroot>
+        <!--
+        <changeowner>
+            <user>nobody</user>
+            <group>nogroup</group>
+        </changeowner>
+        -->
     </security>
 </icecast>'''
         
@@ -519,6 +685,10 @@ class IcecastManagementTab(QWidget):
                         pass  # Backup failed but continue
                 
                 # Copy to system location (requires sudo)
+                import os
+                current_user = os.getenv('USER') or os.getenv('LOGNAME') or 'unknown'
+                
+                # Try the copy command
                 subprocess.run(["sudo", "cp", str(config_file), "/etc/icecast2/icecast.xml"], check=True)
                 
                 success_msg = "Icecast configuration applied successfully!"
@@ -529,12 +699,25 @@ class IcecastManagementTab(QWidget):
                 QMessageBox.information(self, "Config Applied", success_msg)
                 
             except subprocess.CalledProcessError as e:
+                import os
+                current_user = os.getenv('USER') or os.getenv('LOGNAME') or 'unknown'
+                
                 error_msg = f"Failed to apply configuration.\n\nError: {str(e)}\n\n"
+                error_msg += f"Current user: {current_user}\n\n"
                 error_msg += "Possible solutions:\n"
-                error_msg += "1. Run: sudo usermod -a -G sudo rd\n"
-                error_msg += "2. Or run the installer again to set up permissions\n"
-                error_msg += "3. Or manually copy the config:\n"
+                
+                if current_user != 'rd':
+                    error_msg += f"1. Switch to rd user: sudo su - rd\n"
+                    error_msg += f"2. Run GUI as rd user\n"
+                    error_msg += f"3. Add {current_user} to sudoers for this operation\n"
+                else:
+                    error_msg += "1. Run the quick permissions fix:\n"
+                    error_msg += "   wget https://raw.githubusercontent.com/anjeleno/rdx-rivendell/main/quick-fix-permissions.sh\n"
+                    error_msg += "   chmod +x quick-fix-permissions.sh && ./quick-fix-permissions.sh\n"
+                
+                error_msg += f"\n4. Or manually copy the config:\n"
                 error_msg += f"   sudo cp {config_file} /etc/icecast2/icecast.xml"
+                
                 QMessageBox.critical(self, "Apply Failed", error_msg)
             except Exception as e:
                 QMessageBox.critical(self, "Unexpected Error", f"An unexpected error occurred:\n{str(e)}")
@@ -906,8 +1089,24 @@ class ServiceControlTab(QWidget):
                     # Use sudo systemctl for system services
                     subprocess.run(["sudo", "systemctl", "start", service_info['systemd']], check=True)
                 QMessageBox.information(self, "Service Started", f"{service_info['name']} service started successfully!")
-            except subprocess.CalledProcessError:
-                QMessageBox.critical(self, "Start Failed", f"Failed to start {service_info['name']} service.")
+            except subprocess.CalledProcessError as e:
+                import os
+                current_user = os.getenv('USER') or os.getenv('LOGNAME') or 'unknown'
+                
+                error_msg = f"Failed to start {service_info['name']} service.\n\n"
+                error_msg += f"Error: {str(e)}\n\n"
+                
+                if service_key == 'stereo_tool':
+                    error_msg += "Stereo Tool is not installed or service not configured.\n"
+                    error_msg += "This is optional for basic streaming."
+                elif service_key == 'liquidsoap' and service_info.get('user_service', False):
+                    error_msg += "Liquidsoap user service may not be configured.\n"
+                    error_msg += "Run the quick permissions fix script to set it up."
+                elif current_user != 'rd':
+                    error_msg += f"Permission issue: Current user is '{current_user}'.\n"
+                    error_msg += "Try running as 'rd' user or fix permissions."
+                
+                QMessageBox.critical(self, "Start Failed", error_msg)
                 
     def stop_service(self, service_key):
         """Stop a specific service"""
@@ -922,8 +1121,16 @@ class ServiceControlTab(QWidget):
             else:
                 subprocess.run(["sudo", "systemctl", "stop", service_info['systemd']], check=True)
             QMessageBox.information(self, "Service Stopped", f"{service_info['name']} service stopped successfully!")
-        except subprocess.CalledProcessError:
-            QMessageBox.critical(self, "Stop Failed", f"Failed to stop {service_info['name']} service.")
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Failed to stop {service_info['name']} service.\n\n"
+            error_msg += f"Error: {str(e)}\n\n"
+            
+            if service_key == 'jack':
+                error_msg += "JACK may not be running or permission issue with killall."
+            elif service_key == 'stereo_tool':
+                error_msg += "Stereo Tool service may not exist - this is optional."
+            
+            QMessageBox.critical(self, "Stop Failed", error_msg)
             
     def restart_service(self, service_key):
         """Restart a specific service"""
