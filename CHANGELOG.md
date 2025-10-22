@@ -1,5 +1,14 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.12 (2025-10-22)
+### Fixed
+- Liquidsoap: eliminate NameError during Start by importing `re` at module scope
+- Liquidsoap AAC typing: explicitly mark FFmpeg encoder as audio-only with `audio=true, video=false` to satisfy Liquidsoap 2.x type-checker
+
+### Improved
+- Auto-sanitizer now injects `audio=true, video=false` into `%ffmpeg(...)` when missing, quotes `audio_bitrate`, and removes `source=radio` label
+- Installer template `radio.liq`: log path now `~/.config/rdx/liquidsoap.log` and includes a correct AAC example commented out
+
 ## v3.2.11 (2025-10-22)
 ### Fixed
 - Liquidsoap: generator uses positional source (radio) again; removed unsupported source= label

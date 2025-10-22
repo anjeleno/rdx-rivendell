@@ -10,6 +10,7 @@ import json
 import subprocess
 import signal
 import time
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
@@ -356,7 +357,8 @@ output.icecast(
                 int(kbps)
             except Exception:
                 kbps = "64"
-            return f"%ffmpeg(format=\"adts\", audio_codec=\"aac\", audio_bitrate=\"{kbps}k\")"
+            # Explicitly mark as audio encoder to satisfy Liquidsoap 2.x typing
+            return f"%ffmpeg(audio=true, video=false, format=\"adts\", audio_codec=\"aac\", audio_bitrate=\"{kbps}k\")"
         elif codec == "FLAC":
             quality = bitrate.split()[1]
             return f"%flac(compression={quality})"
@@ -1611,6 +1613,9 @@ class ServiceControlTab(QWidget):
         except Exception:
             return
         new = txt
+        # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
+        # Insert audio=true, video=false if not already present
+        new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
         # Fix unquoted audio_bitrate values
         new = re.sub(r'(audio_bitrate\s*=\s*)(\d+k)(\b)', r'\1"\2"', new)
         # Replace source=radio with positional radio while preserving separators
@@ -1671,7 +1676,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.3")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.12")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
