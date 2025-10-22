@@ -206,13 +206,7 @@ post_install_setup() {
     sudo usermod -a -G audio,pulse-access rd 2>/dev/null || true
     print_status "Audio permissions configured"
     
-    # Set up configuration directory
-    if [ ! -d "/home/rd/.config/rdx" ]; then
-        sudo mkdir -p /home/rd/.config/rdx
-        print_status "Configuration directory created"
-    fi
-    
-    # Fix ownership of rd user directories
+    # Fix ownership of rd user directories (in case they exist)
     print_info "Setting correct ownership for rd user directories..."
     sudo chown -R rd:rd /home/rd/.config 2>/dev/null || true
     sudo chown -R rd:rd /home/rd 2>/dev/null || true

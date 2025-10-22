@@ -202,19 +202,62 @@ class StreamBuilderTab(QWidget):
             QMessageBox.warning(self, "No Streams", "Please add at least one stream before generating config.")
             return
             
-        config_dir = Path.home() / ".config" / "rdx"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        
-        liquidsoap_config = self.build_liquidsoap_config()
-        
-        config_file = config_dir / "radio.liq"
         try:
+            # Get current user's config directory
+            config_dir = Path.home() / ".config" / "rdx"
+            
+            # Ensure directory exists with proper permissions
+            self.ensure_config_directory(config_dir)
+            
+            liquidsoap_config = self.build_liquidsoap_config()
+            
+            config_file = config_dir / "radio.liq"
             with open(config_file, 'w') as f:
                 f.write(liquidsoap_config)
             self.status_text.append(f"✅ Generated Liquidsoap config: {config_file}")
             self.status_text.append(f"📄 Configured {len(self.streams)} stream(s)")
+            
         except Exception as e:
             self.status_text.append(f"❌ Failed to write config: {str(e)}")
+            
+    def ensure_config_directory(self, config_dir):
+        """Ensure config directory exists and is writable by current user"""
+        import os
+        import stat
+        
+        try:
+            # Create directory if it doesn't exist
+            config_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Check if we can write to it
+            if not os.access(config_dir, os.W_OK):
+                # Directory exists but we can't write to it (likely owned by root)
+                # Try to fix ownership to current user
+                current_user = os.getenv('USER') or os.getenv('LOGNAME')
+                if current_user:
+                    try:
+                        # Get current user's UID and GID
+                        import pwd
+                        user_info = pwd.getpwnam(current_user)
+                        
+                        # Change ownership to current user
+                        os.chown(config_dir, user_info.pw_uid, user_info.pw_gid)
+                        
+                        # Set proper permissions (755)
+                        os.chmod(config_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+                        
+                    except (PermissionError, KeyError, OSError):
+                        # If we can't fix ownership, create a fallback directory
+                        fallback_dir = Path.home() / ".rdx-config"
+                        fallback_dir.mkdir(parents=True, exist_ok=True)
+                        if fallback_dir != config_dir:
+                            config_dir = fallback_dir
+                            self.status_text.append(f"ℹ️ Using fallback config directory: {config_dir}")
+                            
+        except Exception as e:
+            raise Exception(f"Cannot create configuration directory: {str(e)}")
+            
+        return config_dir
             
     def build_liquidsoap_config(self):
         """Build Liquidsoap configuration string"""
@@ -435,16 +478,20 @@ class IcecastManagementTab(QWidget):
             
     def generate_icecast_config(self):
         """Generate Icecast configuration"""
-        config_dir = Path.home() / ".config" / "rdx"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        
-        icecast_config = self.build_icecast_config()
-        
-        config_file = config_dir / "icecast.xml"
         try:
+            # Get current user's config directory
+            config_dir = Path.home() / ".config" / "rdx"
+            
+            # Ensure directory exists with proper permissions
+            config_dir = self.ensure_config_directory(config_dir)
+            
+            icecast_config = self.build_icecast_config()
+            
+            config_file = config_dir / "icecast.xml"
             with open(config_file, 'w') as f:
                 f.write(icecast_config)
             QMessageBox.information(self, "Config Generated", f"Icecast configuration generated:\n{config_file}")
+            
         except Exception as e:
             QMessageBox.critical(self, "Config Error", f"Failed to generate config:\n{str(e)}")
             
@@ -651,8 +698,10 @@ class IcecastManagementTab(QWidget):
             QMessageBox.warning(self, "No Config", "Please generate configuration first.")
             return
             
-        # Create deployment directory
-        deploy_dir = Path.home() / ".config" / "rdx" / "deploy"
+        # Create deployment directory with proper permissions
+        base_config_dir = Path.home() / ".config" / "rdx"
+        base_config_dir = self.ensure_config_directory(base_config_dir)
+        deploy_dir = base_config_dir / "deploy"
         deploy_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy config to deployment location
