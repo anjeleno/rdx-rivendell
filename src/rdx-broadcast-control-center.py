@@ -491,11 +491,53 @@ class IcecastManagementTab(QWidget):
         
         if reply == QMessageBox.Yes:
             try:
+                # First check if icecast2 directory exists
+                icecast_dir = Path("/etc/icecast2")
+                if not icecast_dir.exists():
+                    # Try to create it or install icecast2
+                    result = QMessageBox.question(self, "Icecast2 Not Found", 
+                                                "Icecast2 is not installed. Install it now?",
+                                                QMessageBox.Yes | QMessageBox.No)
+                    if result == QMessageBox.Yes:
+                        try:
+                            subprocess.run(["sudo", "apt-get", "update"], check=True)
+                            subprocess.run(["sudo", "apt-get", "install", "-y", "icecast2"], check=True)
+                            QMessageBox.information(self, "Icecast2 Installed", "Icecast2 installed successfully!")
+                        except subprocess.CalledProcessError as e:
+                            QMessageBox.critical(self, "Installation Failed", f"Failed to install Icecast2:\n{str(e)}")
+                            return
+                    else:
+                        return
+                
+                # Backup existing config if it exists
+                backup_made = False
+                if Path("/etc/icecast2/icecast.xml").exists():
+                    try:
+                        subprocess.run(["sudo", "cp", "/etc/icecast2/icecast.xml", "/etc/icecast2/icecast.xml.backup"], check=True)
+                        backup_made = True
+                    except subprocess.CalledProcessError:
+                        pass  # Backup failed but continue
+                
                 # Copy to system location (requires sudo)
                 subprocess.run(["sudo", "cp", str(config_file), "/etc/icecast2/icecast.xml"], check=True)
-                QMessageBox.information(self, "Config Applied", "Icecast configuration applied successfully!\nRestart Icecast to apply changes.")
-            except subprocess.CalledProcessError:
-                QMessageBox.critical(self, "Apply Failed", "Failed to apply configuration.\nCheck sudo permissions.")
+                
+                success_msg = "Icecast configuration applied successfully!"
+                if backup_made:
+                    success_msg += "\nOriginal config backed up to icecast.xml.backup"
+                success_msg += "\nRestart Icecast to apply changes."
+                
+                QMessageBox.information(self, "Config Applied", success_msg)
+                
+            except subprocess.CalledProcessError as e:
+                error_msg = f"Failed to apply configuration.\n\nError: {str(e)}\n\n"
+                error_msg += "Possible solutions:\n"
+                error_msg += "1. Run: sudo usermod -a -G sudo rd\n"
+                error_msg += "2. Or run the installer again to set up permissions\n"
+                error_msg += "3. Or manually copy the config:\n"
+                error_msg += f"   sudo cp {config_file} /etc/icecast2/icecast.xml"
+                QMessageBox.critical(self, "Apply Failed", error_msg)
+            except Exception as e:
+                QMessageBox.critical(self, "Unexpected Error", f"An unexpected error occurred:\n{str(e)}")
 
 
 class JackMatrixTab(QWidget):

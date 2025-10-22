@@ -201,12 +201,45 @@ post_install_setup() {
         print_status "User 'rd' already exists"
     fi
     
+    # Add rd user to audio and pulse-access groups
+    print_info "Configuring user permissions..."
+    sudo usermod -a -G audio,pulse-access rd 2>/dev/null || true
+    
+    # Add sudo permissions for broadcast management
+    print_info "Setting up broadcast management permissions..."
+    sudo tee /etc/sudoers.d/rdx-broadcast >/dev/null << 'EOSUDO'
+# RDX Broadcast Control Center permissions
+rd ALL=(root) NOPASSWD: /bin/cp * /etc/icecast2/icecast.xml
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl start icecast2
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop icecast2
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart icecast2
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl status icecast2
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl start liquidsoap
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop liquidsoap
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart liquidsoap
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl status liquidsoap
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl start jackd
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl stop jackd
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl restart jackd
+rd ALL=(root) NOPASSWD: /usr/bin/systemctl status jackd
+EOSUDO
+    
+    if [ $? -eq 0 ]; then
+        print_status "Broadcast management permissions configured"
+    else
+        print_warning "Could not configure sudo permissions - manual setup may be required"
+    fi
+    
     # Set up configuration directory
     if [ ! -d "/home/rd/.config/rdx" ]; then
         sudo mkdir -p /home/rd/.config/rdx
-        sudo chown rd:rd /home/rd/.config/rdx
         print_status "Configuration directory created"
     fi
+    
+    # Fix ownership of rd user directories
+    print_info "Setting correct ownership for rd user directories..."
+    sudo chown -R rd:rd /home/rd/.config 2>/dev/null || true
+    sudo chown -R rd:rd /home/rd 2>/dev/null || true
     
     # Create logs directory
     if [ ! -d "/home/rd/logs" ]; then
