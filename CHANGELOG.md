@@ -1,5 +1,18 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.1.9 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed missing `streams` attribute error in Icecast config deployment
+  - Corrected access to streams data from parent's stream_builder tab
+  - Used proper inter-tab communication pattern: `self.parent().stream_builder.streams`
+  - Fixed "object has no attribute 'streams'" error in IcecastManagementTab
+  - Mount point count now correctly retrieved from StreamBuilderTab
+
+### Technical Improvements
+- Implemented proper tab communication for accessing stream configuration data
+- Enhanced cross-tab data access with defensive programming checks
+- Aligned with existing code patterns used elsewhere in the application
+
 ## v3.1.8 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed missing `get_mount_points()` method error in Icecast config deployment

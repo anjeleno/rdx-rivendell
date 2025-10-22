@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.1.8
+RDX Professional Broadcast Control Center v3.1.9
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -772,11 +772,16 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
             # Clean up temporary script
             temp_script.unlink()
             
+            # Get mount point count from parent's stream builder
+            mount_count = 0
+            if hasattr(self.parent(), 'stream_builder') and hasattr(self.parent().stream_builder, 'streams'):
+                mount_count = len(self.parent().stream_builder.streams)
+            
             QMessageBox.information(self, "Configuration Applied", 
                                   f"Icecast configuration applied and service restarted successfully!\n\n"
                                   f"Host: {self.host_input.text()}\n"
                                   f"Port: {self.port_input.value()}\n"
-                                  f"Mount Points: {len(self.streams)} configured\n\n"
+                                  f"Mount Points: {mount_count} configured\n\n"
                                   f"Config file: {config_file}\n"
                                   f"Backup saved: /etc/icecast2/icecast.xml.backup")
                                   
@@ -1373,7 +1378,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.1.8")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.1.9")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1420,7 +1425,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.8")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.9")
 
 
 def main():
@@ -1428,7 +1433,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.1.8")
+    app.setApplicationVersion("3.1.9")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
