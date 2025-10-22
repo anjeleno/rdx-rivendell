@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.17"
+PACKAGE_VERSION="3.2.18"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -348,6 +348,18 @@ set -e
 
 case "$1" in
     configure)
+        # Attempt to ensure Liquidsoap FFmpeg plugin is available automatically
+        if command -v liquidsoap >/dev/null 2>&1; then
+            # If ffmpeg encoder help shows missing, try install
+            if ! liquidsoap -h encoder.ffmpeg >/dev/null 2>&1 || liquidsoap -h encoder.ffmpeg 2>&1 | grep -qi "Plugin not found"; then
+                echo "[postinst] Ensuring Liquidsoap FFmpeg plugin is installed..."
+                if command -v /usr/share/rdx/install-liquidsoap-plugin.sh >/dev/null 2>&1; then
+                    # First try current repos; on failure, try official repo path
+                    /usr/share/rdx/install-liquidsoap-plugin.sh current || /usr/share/rdx/install-liquidsoap-plugin.sh official || true
+                fi
+            fi
+        fi
+
         # Ensure skeleton examples are in place for new users
         if [ -d "/etc/skel/.config/rdx" ]; then
             chmod 755 /etc/skel/.config /etc/skel/.config/rdx 2>/dev/null || true
@@ -381,6 +393,106 @@ esac
 exit 0
 EOF
 chmod +x "$PACKAGE_DIR/DEBIAN/postinst"
+
+# Helper script to install Liquidsoap ffmpeg plugin (with optional repo enablement)
+install -d "$PACKAGE_DIR/usr/share/rdx"
+cat > "$PACKAGE_DIR/usr/share/rdx/install-liquidsoap-plugin.sh" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-current}"
+
+log() { echo "[rdx-install] $*"; }
+
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+apt_install() {
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+}
+
+try_install_plugins_from_current() {
+    local pkgs=(liquidsoap-plugin-ffmpeg liquidsoap-plugin-all liquidsoap-plugin-extra)
+    local ok=1
+    for p in "${pkgs[@]}"; do
+        if apt-get -s install "$p" >/dev/null 2>&1; then
+            log "Attempting to install $p"
+            apt_install "$p" && ok=0 && break || true
+        fi
+    done
+    return $ok
+}
+
+add_official_repo() {
+    if have_cmd add-apt-repository; then
+        :
+    else
+        apt_install software-properties-common || true
+    fi
+    if have_cmd add-apt-repository; then
+        log "Enabling official Liquidsoap PPA (savonet/ppa)"
+        add-apt-repository -y ppa:savonet/ppa || true
+    else
+        log "add-apt-repository not available; skipping PPA enable."
+    fi
+    apt-get update || true
+}
+
+add_vendor_repo() {
+    # Placeholder: vendor repository details not configured.
+    log "Vendor repo not configured. Skipping."
+}
+
+check_ffmpeg_plugin() {
+    if ! command -v liquidsoap >/dev/null 2>&1; then
+        return 1
+    fi
+    out=$(liquidsoap -h encoder.ffmpeg 2>&1 || true)
+    echo "$out" | grep -qi 'plugin not found' && return 1
+    # If command failed return code, also consider missing
+    liquidsoap -h encoder.ffmpeg >/dev/null 2>&1
+}
+
+main() {
+    if ! command -v apt-get >/dev/null 2>&1; then
+        log "apt-get not found; cannot install packages automatically"
+        exit 1
+    fi
+    # Ensure apt cache is fresh
+    apt-get update || true
+
+    if check_ffmpeg_plugin; then
+        log "FFmpeg plugin already available."
+        exit 0
+    fi
+
+    case "$MODE" in
+        current)
+            try_install_plugins_from_current || exit 1
+            ;;
+        official)
+            try_install_plugins_from_current || { add_official_repo; try_install_plugins_from_current || exit 1; }
+            ;;
+        vendor)
+            try_install_plugins_from_current || { add_vendor_repo; try_install_plugins_from_current || exit 1; }
+            ;;
+        *)
+            log "Unknown mode: $MODE"
+            exit 1
+            ;;
+    esac
+
+    if check_ffmpeg_plugin; then
+        log "FFmpeg plugin installed successfully."
+        exit 0
+    else
+        log "FFmpeg plugin still missing after install attempts."
+        exit 2
+    fi
+}
+
+main "$@"
+EOF
+chmod +x "$PACKAGE_DIR/usr/share/rdx/install-liquidsoap-plugin.sh"
 
 # Create prerm script
 cat > "$PACKAGE_DIR/DEBIAN/prerm" << 'EOF'

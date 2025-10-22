@@ -1,5 +1,35 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.18 (2025-10-22)
+### Fixed
+- Resolved Python SyntaxError/indentation issues introduced during installer integration
+- Cleaned up Service Control logic: correct try/except scoping and removed duplicate code
+
+### Added
+- Proper `restart_service()` implementation in Service Control tab (user-process for Liquidsoap; systemd for others)
+
+### Changed
+- `start_service()` now uses `systemctl start` for non-user Liquidsoap services (was incorrectly using restart)
+- Version strings aligned across title bar, status bar, and application metadata
+
+### Notes
+- Retains guided FFmpeg plugin installation and preflight parse/sanitizer flow
+
+## v3.2.17 (2025-10-22)
+### Added
+- In-app one-click installer for Liquidsoap FFmpeg plugin with choices:
+  - Current OS repos
+  - Official Liquidsoap repo
+  - Vendor repo (Paravel)
+- Post-installation automation: attempts to install the FFmpeg plugin during package configure
+
+### Improved
+- Hardened plugin detection and user guidance when encoder plugin is missing
+- Adaptive sanitizer and capability probe for FFmpeg encoders and formats
+
+### Packaging
+- Built and published `.deb` to `releases/` as v3.2.17
+
 ## v3.2.16 (2025-10-22)
 ### Fixed
 - Installation compatibility: Relaxed FFmpeg plugin requirement to avoid “dependency not satisfiable” on distros where that package name isn’t available

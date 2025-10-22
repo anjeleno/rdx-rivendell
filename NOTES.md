@@ -548,3 +548,74 @@ Stream Formats Supported:
 ERROR: /usr/local/bin/rdx-aac-stream.sh: illegal option -- -
 
 Con't make any changes without confirming with me first. 
+
+
+
+If your repo truly lacks any plugin package, I can add an optional post-install step to add the official Liquidsoap repo or your preferred vendor repo (e.g., Paravel Systems) and then install the plugin automatically. Want me to wire that in? Ubuntu 22.04 / 24.04 x64 absolutely have an ffmpeg package.
+
+please make sure all of the liquidsoap packages and plugins are installed if missing on the user's system. 
+
+
+So bizarre, because Ubuntu 22.04 / 24.04 x64 absolutely have an ffmpeg packages.
+
+If ffmpeg plugin is missing:
+Offer a button to install whichever is available:
+liquidsoap-plugin-ffmpeg
+liquidsoap-plugin-all
+liquidsoap-plugin-extra
+If none of those exist in the current repos:
+Offer to add the official Liquidsoap repo
+- Yes to one-click install, as long as it's automatic, happens on first RDX app install and doesn't require the user to do anything afterwards.
+official Liquidsoap repo, or a vendor repo (e.g., Paravel Systems), or both with a choice prompt?
+- Both with a choice.
+
+Also, I just deleted the aac stream and it let me start Liquidsoap for the first time. I had tried previously with an MP3 stream only and i failed. 
+2025/10/22 15:10:46 >>> LOG START
+2025/10/22 15:10:45 [main:3] Liquidsoap 2.0.2
+2025/10/22 15:10:45 [main:3] Using: graphics=5.1.2 bytes=[distributed with OCaml 4.02 or above] pcre=7.5.0 sedlex=2.5 menhirLib=20210929 dtools=0.4.4 duppy=0.9.2 cry=0.6.5 mm=0.7.3 xmlplaylist=0.1.5 ogg=0.7.0 ogg.decoder=0.7.0 vorbis=0.8.0 vorbis.decoder=0.8.0 opus=0.2.1 opus.decoder=0.2.1 speex=0.4.1 speex.decoder=0.4.1 mad=0.5.0 flac=0.3.0 flac.ogg=0.3.0 flac.decoder=0.3.0 dynlink=[distributed with Ocaml] lame=0.3.5 shine=0.2.2 gstreamer=0.3.1 frei0r=0.1.2 theora=0.4.0 theora.decoder=0.4.0 ffmpeg=1.1.1 bjack=0.1.6 alsa=0.3.0 ao=0.2.3 samplerate=0.1.6 taglib=0.3.7 ssl=0.5.9 magic=0.7.3 camomile=1.0.2 inotify=2.3 yojson=[unspecified] faad=0.5.0 soundtouch=0.1.9 portaudio=0.2.2 pulseaudio=0.1.4 ladspa=0.2.0 camlimages=4.2.6 lo=0.2.0 gd=1.0a5
+2025/10/22 15:10:45 [dynamic.loader:3] Could not find dynamic module for fdkaac encoder.
+2025/10/22 15:10:45 [gstreamer.loader:3] Loaded GStreamer 1.20.3 0
+2025/10/22 15:10:45 [clock:3] Using builtin (low-precision) implementation for latency control
+2025/10/22 15:10:46 [lang:2] WARNING: "set" is deprecated and will be removed in future version. Please use `settings.path.to.key.set(value)`
+2025/10/22 15:10:46 [lang:2] WARNING: "set" is deprecated and will be removed in future version. Please use `settings.path.to.key.set(value)`
+2025/10/22 15:10:46 [lang:2] WARNING: "set" is deprecated and will be removed in future version. Please use `settings.path.to.key.set(value)`
+2025/10/22 15:10:46 [lang:2] WARNING: setting "icy.metadata" does not exist!
+2025/10/22 15:10:46 [frame:3] Using 48000Hz audio, 25Hz video, 48000Hz main.
+2025/10/22 15:10:46 [frame:3] Video frame size set to: 1280x720
+2025/10/22 15:10:46 [frame:3] Frame size must be a multiple of 1920 ticks = 1920 audio samples = 1 video samples.
+2025/10/22 15:10:46 [frame:3] Targeting 'frame.duration': 0.04s = 1920 audio samples = 1920 ticks.
+2025/10/22 15:10:46 [frame:3] Frames last 0.04s = 1920 audio samples = 1 video samples = 1920 ticks.
+2025/10/22 15:10:46 [sandbox:3] Sandboxing disabled
+2025/10/22 15:10:46 [video.converter:3] Using preferred video converter: ffmpeg.
+2025/10/22 15:10:46 [audio.converter:3] Using samplerate converter: ffmpeg.
+2025/10/22 15:10:46 [KPLZ:3] Connecting mount /320 for source@localhost...
+2025/10/22 15:10:46 [KPLZ:3] Connection setup was successful.
+2025/10/22 15:10:46 [clock.input.jack:3] Streaming loop starts in auto-sync mode
+2025/10/22 15:10:46 [clock.input.jack:3] Delegating synchronisation to active sources
+2025/10/22 15:10:47 [mksafe:3] Switch to liquidsoap.
+
+
+googling liquidsoap configs for aac that worked for someone else led me to the following (critical line being the output.icecast(%fdkaac...) bit):
+
+output.icecast(%fdkaac(bitrate=128), host="[whatever]",
+port=8000, password="[whatever]", mount="wyze", genre="Other",
+url="http://wyzeradio.com", description="WYZE AM 1480", stream1,
+on_start=jackConnect)
+
+"... and it works fine."
+
+the post was from late 2022 on  Rocky Linux 8.
+does this help us?
+
+Something else that is still pending, we havent handled Stereo Tool yet. 
+Can we detect the user's os version, parse the thimeo download page and and present the user with the (example:) x64 Jack standalone download option and make it executable, etc in one-shot?
+https://www.thimeo.com/stereo-tool/download/ 
+
+Also, advanced users (like myself) may have several versions of Stereo Tool for testing new features or using deprecated features, etc. What would be really helpful is if we can have a Stereo Tool field to set the path of each version and then toggle which one is active at any given time when we launch RDX. Maybe default to one path with a button to add another Stereo Tool Instance?
+
+And what's the most relaible approach to launching the active Stereo Tool instance? systemd service?
+
+Upon launching RDX for the chain to work properly, services need to start in the following order:
+- Jack (should detect and mount Rivendell)
+- Liquidsoap
+- Stereo Tool

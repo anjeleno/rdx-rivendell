@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.14
+RDX Professional Broadcast Control Center v3.2.18
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -33,126 +33,72 @@ class StreamBuilderTab(QWidget):
         
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
+
         # Stream Builder Section
         builder_group = QGroupBox("🎵 Add New Stream")
-        builder_layout = QFormLayout(builder_group)
-        
-        # Codec dropdown
-        self.codec_combo = QComboBox()
-        self.codec_combo.addItems(["MP3", "AAC+", "FLAC", "OGG", "OPUS"])
-        self.codec_combo.currentTextChanged.connect(self.update_bitrate_options)
-        builder_layout.addRow("Codec:", self.codec_combo)
-        
-        # Bitrate dropdown (dynamic based on codec)
-        self.bitrate_combo = QComboBox()
-        self.update_bitrate_options("MP3")  # Initialize with MP3 options
-        builder_layout.addRow("Bitrate/Quality:", self.bitrate_combo)
-        
-        # Mount point input
-        self.mount_input = QLineEdit()
-        self.mount_input.setPlaceholderText("/example")
-        builder_layout.addRow("Mount Point:", self.mount_input)
-        
-        # Station name input
+        form = QFormLayout(builder_group)
+
+        # Codec and Bitrate
+        self.codec_input = QComboBox()
+        self.codec_input.addItems(["MP3", "AAC+", "FLAC", "OGG", "OPUS"])
+        form.addRow("Codec:", self.codec_input)
+
+        self.bitrate_input = QComboBox()
+        self.bitrate_input.addItems(["64 kbps", "96 kbps", "128 kbps", "192 kbps", "256 kbps", "320 kbps"])
+        form.addRow("Bitrate:", self.bitrate_input)
+
+        # Mount and Metadata
+        self.mount_input = QLineEdit("/stream")
+        form.addRow("Mount:", self.mount_input)
+
         self.station_name_input = QLineEdit()
-        self.station_name_input.setPlaceholderText(":: Station Name :: Station Slogan ::")
-        builder_layout.addRow("Station Name:", self.station_name_input)
-        
-        # Genre input
+        form.addRow("Station Name:", self.station_name_input)
+
         self.genre_input = QLineEdit()
-        self.genre_input.setPlaceholderText("Rock, Pop, Jazz, etc.")
-        builder_layout.addRow("Genre:", self.genre_input)
-        
-        # Description input
+        form.addRow("Genre:", self.genre_input)
+
         self.description_input = QLineEdit()
-        self.description_input.setPlaceholderText("Optional Description")
-        builder_layout.addRow("Description:", self.description_input)
-        
-        # Add stream button
-        add_btn = QPushButton("🎵 ADD STREAM")
-        add_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+        form.addRow("Description:", self.description_input)
+
+        add_btn = QPushButton("➕ Add Stream")
         add_btn.clicked.connect(self.add_stream)
-        builder_layout.addRow(add_btn)
-        
+        form.addRow(add_btn)
+
         layout.addWidget(builder_group)
-        
-        # Current Streams Section
-        streams_group = QGroupBox("📋 Configured Streams")
-        streams_layout = QVBoxLayout(streams_group)
-        
+
         # Streams table
         self.streams_table = QTableWidget()
-        self.streams_table.setColumnCount(7)
-        self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description", "Actions"])
+        self.streams_table.setColumnCount(6)
+        self.streams_table.setHorizontalHeaderLabels(["Codec", "Bitrate", "Mount", "Station Name", "Genre", "Description"])
         self.streams_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        streams_layout.addWidget(self.streams_table)
-        
-        # Configuration actions
-        config_layout = QHBoxLayout()
-        
-        generate_btn = QPushButton("🔧 GENERATE LIQUIDSOAP CONFIG")
-        generate_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
-        generate_btn.clicked.connect(self.generate_liquidsoap_config)
-        config_layout.addWidget(generate_btn)
-        
-        apply_btn = QPushButton("📡 APPLY TO ICECAST")
-        apply_btn.setStyleSheet("QPushButton { background-color: #e74c3c; color: white; font-weight: bold; padding: 8px; }")
-        apply_btn.clicked.connect(self.apply_to_icecast)
-        config_layout.addWidget(apply_btn)
-        
-        streams_layout.addLayout(config_layout)
-        layout.addWidget(streams_group)
-        
+        layout.addWidget(self.streams_table)
+
         # Status area
         self.status_text = QTextEdit()
-        self.status_text.setMaximumHeight(150)
-        self.status_text.setPlaceholderText("Stream configuration status will appear here...")
-        layout.addWidget(QLabel("📊 Configuration Status:"))
+        self.status_text.setReadOnly(True)
         layout.addWidget(self.status_text)
-        
-    def update_bitrate_options(self, codec):
-        """Update bitrate options based on selected codec"""
-        self.bitrate_combo.clear()
-        
-        if codec == "MP3":
-            self.bitrate_combo.addItems(["64 kbps", "96 kbps", "128 kbps", "160 kbps", "192 kbps", "256 kbps", "320 kbps"])
-        elif codec == "AAC+":
-            self.bitrate_combo.addItems(["32 kbps", "48 kbps", "64 kbps", "96 kbps", "128 kbps"])
-        elif codec == "FLAC":
-            self.bitrate_combo.addItems(["Quality 0", "Quality 3", "Quality 5", "Quality 8"])
-        elif codec == "OGG":
-            self.bitrate_combo.addItems(["64 kbps", "96 kbps", "128 kbps", "160 kbps", "192 kbps", "256 kbps"])
-        elif codec == "OPUS":
-            self.bitrate_combo.addItems(["48 kbps", "64 kbps", "96 kbps", "128 kbps", "160 kbps"])
-            
+
     def add_stream(self):
-        """Add a new stream configuration"""
-        codec = self.codec_combo.currentText()
-        bitrate = self.bitrate_combo.currentText()
+        """Add a new stream configuration from inputs"""
+        codec = self.codec_input.currentText()
+        bitrate = self.bitrate_input.currentText()
         mount = self.mount_input.text().strip()
         station_name = self.station_name_input.text().strip()
         genre = self.genre_input.text().strip()
         description = self.description_input.text().strip()
-        
+
+        if not mount:
+            QMessageBox.warning(self, "Missing Mount", "Please enter a mount point (e.g., /stream).")
+            return
         if not mount.startswith('/'):
             mount = '/' + mount
-            
-        if not mount or mount == '/':
-            QMessageBox.warning(self, "Invalid Mount", "Please enter a valid mount point (e.g., /mp3-320)")
-            return
-            
-        if not station_name:
-            QMessageBox.warning(self, "Missing Station Name", "Please enter a station name")
-            return
-            
-        # Check for duplicate mounts
-        for stream in self.streams:
-            if stream['mount'] == mount:
+
+        # Prevent duplicates
+        for s in self.streams:
+            if s.get('mount') == mount:
                 QMessageBox.warning(self, "Duplicate Mount", f"Mount point {mount} already exists!")
                 return
-                
-        # Add stream
+
         stream = {
             'codec': codec,
             'bitrate': bitrate,
@@ -162,19 +108,17 @@ class StreamBuilderTab(QWidget):
             'description': description if description else f'{codec} stream at {bitrate}'
         }
         self.streams.append(stream)
-        
-        # Update table
+
+        # Update UI and persist
         self.refresh_streams_table()
-        
-        # Save streams persistently
         self.save_streams()
-        
-        # Clear inputs
+
+        # Clear some inputs
         self.mount_input.clear()
         self.station_name_input.clear()
         self.genre_input.clear()
         self.description_input.clear()
-        
+
         self.status_text.append(f"✅ Added stream: {codec} {bitrate} → {mount}")
         
     def refresh_streams_table(self):
@@ -1378,52 +1322,62 @@ class ServiceControlTab(QWidget):
     def start_service(self, service_key):
         """Start a specific service automatically"""
         service_info = self.services[service_key]
-        
         try:
             if service_key == 'jack':
                 # Start JACK with basic configuration
-                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"], 
-                             check=False, capture_output=True)
+                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"],
+                               check=False, capture_output=True)
                 QMessageBox.information(self, "JACK Started", "JACK audio server started successfully.")
-                
+
             elif service_key == 'liquidsoap':
                 # Start liquidsoap with generated config
                 config_dir = self.get_config_directory()
                 config_file = config_dir / "radio.liq"
                 log_file = config_dir / "liquidsoap.log"
-                
+
                 # Verify liquidsoap is available
                 import shutil
-                import re
                 if shutil.which("liquidsoap") is None:
-                    QMessageBox.critical(self, "Liquidsoap Not Found", 
+                    QMessageBox.critical(self, "Liquidsoap Not Found",
                                          "The 'liquidsoap' command is not installed or not in PATH.\n"
                                          "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
                     return
                 # Verify ffmpeg encoder plugin availability
                 try:
                     plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
-                    if plugin_check.returncode != 0:
-                        QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
-                                             "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
-                                             "Install one of the following (varies by distro):\n"
-                                             "  sudo apt install liquidsoap-plugin-ffmpeg\n"
-                                             "  sudo apt install liquidsoap-plugin-all\n"
-                                             "  sudo apt install liquidsoap-plugin-extra\n\n"
-                                             "Then try starting Liquidsoap again.")
-                        return
+                    out = (plugin_check.stdout or "") + "\n" + (plugin_check.stderr or "")
+                    if plugin_check.returncode != 0 or "Plugin not found" in out:
+                        # Offer guided installation
+                        if self.prompt_install_ffmpeg_plugin():
+                            # Re-check after install
+                            plugin_check2 = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+                            out2 = (plugin_check2.stdout or "") + "\n" + (plugin_check2.stderr or "")
+                            if plugin_check2.returncode != 0 or "Plugin not found" in out2:
+                                QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
+                                                     "FFmpeg encoder plugin still not available after installation attempt.\n\n"
+                                                     "Please install one of: liquidsoap-plugin-ffmpeg | liquidsoap-plugin-all | liquidsoap-plugin-extra\n"
+                                                     "or enable the official Liquidsoap repository and try again.")
+                                return
+                        else:
+                            QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
+                                                 "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
+                                                 "Install one of the following (varies by distro):\n"
+                                                 "  sudo apt install liquidsoap-plugin-ffmpeg\n"
+                                                 "  sudo apt install liquidsoap-plugin-all\n"
+                                                 "  sudo apt install liquidsoap-plugin-extra\n\n"
+                                                 "Then try starting Liquidsoap again.")
+                            return
                 except Exception:
                     pass
+
                 # Parse-check Liquidsoap config before launching
                 check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
                 if check.returncode != 0:
-                    # Attempt auto-fix for common issues and re-check up to two strategies
+                    # Attempt auto-fix then strict fix as needed
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
-                    # Sanitize config for common issues (unquoted bitrate, source label, ffmpeg audio flags)
                     self.sanitize_liquidsoap_config(config_file)
                     check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
                     if check2.returncode != 0:
-                        # Secondary, stricter sanitation: switch ffmpeg bitrate to numeric (e.g., 64k -> 64000)
                         self.sanitize_liquidsoap_config_strict(config_file)
                         check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
                         if check3.returncode != 0:
@@ -1432,122 +1386,51 @@ class ServiceControlTab(QWidget):
                             QMessageBox.critical(self, "Liquidsoap Config Error",
                                                  f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
                             return
-                
+
                 if config_file.exists():
                     try:
-                        # Append output to a per-user log for troubleshooting
                         log_fh = open(log_file, "a", buffering=1)
                     except Exception:
                         log_fh = None
-                    
                     try:
                         subprocess.Popen(["liquidsoap", str(config_file)],
                                          stdout=log_fh or subprocess.DEVNULL,
                                          stderr=log_fh or subprocess.DEVNULL,
                                          start_new_session=True)
-                        QMessageBox.information(self, "Liquidsoap Started", 
+                        QMessageBox.information(self, "Liquidsoap Started",
                                                 f"Liquidsoap started with config: {config_file}\n\n"
                                                 f"Logs: {log_file}")
                     except Exception as e:
                         if log_fh:
                             log_fh.close()
-                        QMessageBox.critical(self, "Liquidsoap Start Error", 
+                        QMessageBox.critical(self, "Liquidsoap Start Error",
                                              f"Failed to launch Liquidsoap:\n{e}")
                         return
-                    # Close our handle; child keeps fd open
                     if log_fh:
                         try:
                             log_fh.close()
                         except Exception:
                             pass
                 else:
-                    QMessageBox.warning(self, "No Config", 
-                                      "Please generate Liquidsoap configuration first in Stream Builder tab.")
-                    
+                    QMessageBox.warning(self, "No Config",
+                                        "Please generate Liquidsoap configuration first in Stream Builder tab.")
+
             else:
                 # For other services, use systemctl
-                subprocess.run(["systemctl", "start", service_info['systemd']], check=True)
-                QMessageBox.information(self, f"{service_info['name']} Started", 
-                                      f"{service_info['name']} service started successfully.")
-                
+                if service_info.get('user_service', False):
+                    subprocess.run(["systemctl", "--user", "start", service_info['systemd']], check=True)
+                else:
+                    subprocess.run(["systemctl", "start", service_info['systemd']], check=True)
+                QMessageBox.information(self, f"{service_info['name']} Started",
+                                        f"{service_info['name']} service started successfully.")
+
         except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self, "Service Start Failed", 
-                               f"Failed to start {service_info['name']}:\n{str(e)}")
+            QMessageBox.critical(self, "Service Start Failed",
+                                 f"Failed to start {service_info['name']}:\n{str(e)}")
         except Exception as e:
-            QMessageBox.critical(self, "Service Start Error", 
-                               f"Error starting {service_info['name']}:\n{str(e)}")
-                
-    def stop_service(self, service_key):
-        """Stop a specific service automatically"""
-        service_info = self.services[service_key]
-        
-        try:
-            if service_key == 'jack':
-                # Stop JACK
-                subprocess.run(["killall", "jackd"], check=False)
-                QMessageBox.information(self, "JACK Stopped", "JACK audio server stopped.")
-                
-            elif service_key == 'liquidsoap':
-                # Stop liquidsoap
-                subprocess.run(["killall", "liquidsoap"], check=False)
-                QMessageBox.information(self, "Liquidsoap Stopped", "Liquidsoap stopped.")
-                
-            else:
-                # For other services, use systemctl
-                subprocess.run(["systemctl", "stop", service_info['systemd']], check=True)
-                QMessageBox.information(self, f"{service_info['name']} Stopped", 
-                                      f"{service_info['name']} service stopped successfully.")
-                
-        except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self, "Service Stop Failed", 
-                               f"Failed to stop {service_info['name']}:\n{str(e)}")
-        except Exception as e:
-            QMessageBox.critical(self, "Service Stop Error", 
-                               f"Error stopping {service_info['name']}:\n{str(e)}")
-            
-    def restart_service(self, service_key):
-        """Restart a specific service automatically"""
-        service_info = self.services[service_key]
-        
-        try:
-            if service_key == 'jack':
-                # Restart JACK
-                subprocess.run(["killall", "jackd"], check=False)
-                time.sleep(1)
-                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"], 
-                             check=False, capture_output=True)
-                QMessageBox.information(self, "JACK Restarted", "JACK audio server restarted successfully.")
-                
-            elif service_key == 'liquidsoap':
-                # Restart liquidsoap
-                subprocess.run(["killall", "liquidsoap"], check=False)
-                time.sleep(1)
-                
-                config_dir = self.get_config_directory()
-                config_file = config_dir / "radio.liq"
-                log_file = config_dir / "liquidsoap.log"
-                
-                # Verify liquidsoap is available
-                import shutil
-                if shutil.which("liquidsoap") is None:
-                    QMessageBox.critical(self, "Liquidsoap Not Found", 
-                                         "The 'liquidsoap' command is not installed or not in PATH.\n"
-                                         "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
-                    return
-                # Verify ffmpeg encoder plugin availability
-                try:
-                    plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
-                    if plugin_check.returncode != 0:
-                        QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
-                                             "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
-                                             "Install one of the following (varies by distro):\n"
-                                             "  sudo apt install liquidsoap-plugin-ffmpeg\n"
-                                             "  sudo apt install liquidsoap-plugin-all\n"
-                                             "  sudo apt install liquidsoap-plugin-extra\n\n"
-                                             "Then try restarting Liquidsoap again.")
-                        return
-                except Exception:
-                    pass
+            QMessageBox.critical(self, "Service Start Error",
+                                 f"Error starting {service_info['name']}:\n{str(e)}")
+
                 # Parse-check Liquidsoap config before launching
                 check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
                 if check.returncode != 0:
@@ -1605,6 +1488,190 @@ class ServiceControlTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Service Restart Error", 
                                f"Error restarting {service_info['name']}:\n{str(e)}")
+                
+    def stop_service(self, service_key):
+        """Stop a specific service automatically"""
+        service_info = self.services[service_key]
+        
+        try:
+            if service_key == 'jack':
+                # Stop JACK
+                subprocess.run(["killall", "jackd"], check=False)
+                QMessageBox.information(self, "JACK Stopped", "JACK audio server stopped.")
+                
+            elif service_key == 'liquidsoap':
+                # Stop liquidsoap
+                subprocess.run(["killall", "liquidsoap"], check=False)
+                QMessageBox.information(self, "Liquidsoap Stopped", "Liquidsoap stopped.")
+                
+            else:
+                # For other services, use systemctl
+                subprocess.run(["systemctl", "stop", service_info['systemd']], check=True)
+                QMessageBox.information(self, f"{service_info['name']} Stopped", 
+                                      f"{service_info['name']} service stopped successfully.")
+                
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Service Stop Failed", 
+                               f"Failed to stop {service_info['name']}:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Service Stop Error", 
+                               f"Error stopping {service_info['name']}:\n{str(e)}")
+
+    def restart_service(self, service_key):
+        """Restart a specific service automatically"""
+        service_info = self.services[service_key]
+        try:
+            if service_key == 'jack':
+                # Restart JACK
+                subprocess.run(["killall", "jackd"], check=False)
+                time.sleep(1)
+                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"],
+                               check=False, capture_output=True)
+                QMessageBox.information(self, "JACK Restarted", "JACK audio server restarted successfully.")
+
+            elif service_key == 'liquidsoap':
+                # Restart liquidsoap
+                subprocess.run(["killall", "liquidsoap"], check=False)
+                time.sleep(1)
+
+                config_dir = self.get_config_directory()
+                config_file = config_dir / "radio.liq"
+                log_file = config_dir / "liquidsoap.log"
+
+                # Verify liquidsoap is available
+                import shutil
+                if shutil.which("liquidsoap") is None:
+                    QMessageBox.critical(self, "Liquidsoap Not Found",
+                                         "The 'liquidsoap' command is not installed or not in PATH.\n"
+                                         "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
+                    return
+                # Verify ffmpeg encoder plugin availability
+                try:
+                    plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+                    out = (plugin_check.stdout or "") + "\n" + (plugin_check.stderr or "")
+                    if plugin_check.returncode != 0 or "Plugin not found" in out:
+                        if self.prompt_install_ffmpeg_plugin():
+                            plugin_check2 = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+                            out2 = (plugin_check2.stdout or "") + "\n" + (plugin_check2.stderr or "")
+                            if plugin_check2.returncode != 0 or "Plugin not found" in out2:
+                                QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
+                                                     "FFmpeg encoder plugin still not available after installation attempt.\n\n"
+                                                     "Please install one of: liquidsoap-plugin-ffmpeg | liquidsoap-plugin-all | liquidsoap-plugin-extra\n"
+                                                     "or enable the official Liquidsoap repository and try again.")
+                                return
+                        else:
+                            QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
+                                                 "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
+                                                 "Install one of the following (varies by distro):\n"
+                                                 "  sudo apt install liquidsoap-plugin-ffmpeg\n"
+                                                 "  sudo apt install liquidsoap-plugin-all\n"
+                                                 "  sudo apt install liquidsoap-plugin-extra\n\n"
+                                                 "Then try restarting Liquidsoap again.")
+                            return
+                except Exception:
+                    pass
+
+                # Parse-check Liquidsoap config before launching
+                check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                if check.returncode != 0:
+                    # Attempt auto-fix then strict fix as needed
+                    orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
+                    self.sanitize_liquidsoap_config(config_file)
+                    check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                    if check2.returncode != 0:
+                        self.sanitize_liquidsoap_config_strict(config_file)
+                        check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                        if check3.returncode != 0:
+                            msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
+                            msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
+                            QMessageBox.critical(self, "Liquidsoap Config Error",
+                                                 f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
+                            return
+
+                if config_file.exists():
+                    try:
+                        log_fh = open(log_file, "a", buffering=1)
+                    except Exception:
+                        log_fh = None
+                    try:
+                        subprocess.Popen(["liquidsoap", str(config_file)],
+                                         stdout=log_fh or subprocess.DEVNULL,
+                                         stderr=log_fh or subprocess.DEVNULL,
+                                         start_new_session=True)
+                        QMessageBox.information(self, "Liquidsoap Restarted",
+                                                f"Liquidsoap restarted with config: {config_file}\n\n"
+                                                f"Logs: {log_file}")
+                    except Exception as e:
+                        if log_fh:
+                            log_fh.close()
+                        QMessageBox.critical(self, "Liquidsoap Restart Error",
+                                             f"Failed to launch Liquidsoap:\n{e}")
+                        return
+                    if log_fh:
+                        try:
+                            log_fh.close()
+                        except Exception:
+                            pass
+                else:
+                    QMessageBox.warning(self, "No Config",
+                                        "Please generate Liquidsoap configuration first in Stream Builder tab.")
+
+            else:
+                # For other services, use systemctl
+                if service_info.get('user_service', False):
+                    subprocess.run(["systemctl", "--user", "restart", service_info['systemd']], check=True)
+                else:
+                    subprocess.run(["systemctl", "restart", service_info['systemd']], check=True)
+                QMessageBox.information(self, f"{service_info['name']} Restarted",
+                                        f"{service_info['name']} service restarted successfully.")
+
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self, "Service Restart Failed",
+                                 f"Failed to restart {service_info['name']}:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Service Restart Error",
+                                 f"Error restarting {service_info['name']}:\n{str(e)}")
+            
+    
+    def prompt_install_ffmpeg_plugin(self) -> bool:
+        """Offer to install Liquidsoap's ffmpeg plugin via system package manager.
+        Returns True if installation was attempted (and presumed successful), False otherwise.
+        """
+        try:
+            from PyQt5.QtWidgets import QInputDialog
+            options = [
+                "Install from current repos",
+                "Add official Liquidsoap repo + install",
+                "Add vendor repo (Paravel) + install",
+                "Cancel",
+            ]
+            choice, ok = QInputDialog.getItem(self, "Install FFmpeg Plugin",
+                                              "FFmpeg encoder plugin is missing. Choose installation method:",
+                                              options, 0, False)
+            if not ok or choice == "Cancel":
+                return False
+            mode = "current"
+            if choice.startswith("Add official"):
+                mode = "official"
+            elif choice.startswith("Add vendor"):
+                mode = "vendor"
+            # Try pkexec to elevate
+            installer = "/usr/share/rdx/install-liquidsoap-plugin.sh"
+            cmd = ["pkexec", installer, mode]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                # Fallback: try sudo in a terminal-less environment might fail, but attempt
+                res2 = subprocess.run(["sudo", installer, mode], capture_output=True, text=True)
+                if res2.returncode != 0:
+                    QMessageBox.critical(self, "Install Failed",
+                                         f"Failed to install FFmpeg plugin.\n\nOutput:\n{(res.stdout or res.stderr or '') + (res2.stdout or res2.stderr or '')}")
+                    return False
+            QMessageBox.information(self, "Install Complete",
+                                    "FFmpeg plugin installation attempted. Rechecking availability...")
+            return True
+        except Exception as e:
+            QMessageBox.critical(self, "Install Error", f"Error during installation: {e}")
+            return False
 
     def get_config_directory(self):
         """Get the application config directory, creating it if needed"""
@@ -1780,7 +1847,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.17")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.18")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1827,7 +1894,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.17")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.18")
 
 
 def main():
@@ -1835,7 +1902,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.17")
+    app.setApplicationVersion("3.2.18")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

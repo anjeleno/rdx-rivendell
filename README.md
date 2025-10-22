@@ -1,6 +1,6 @@
 # RDX - Rivendell Extended
 
-**Professional broadcast audio system with intelligent routing and advanced streaming capabilities**
+**Professional broadcast smart streaming manager with intelligent routing and advanced streaming capabilities**
 
 RDX enhances Rivendell v4+ with **broadcast-grade intelligence**: smart hardware detection, automatic audio routing, bulletproof protection for critical connections, and comprehensive AAC+ streaming support. Critical broadcast audio is safe while gaining unprecedented control over complex routing scenarios.
 
