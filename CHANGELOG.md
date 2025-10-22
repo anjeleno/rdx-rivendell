@@ -1,6 +1,19 @@
-# RDX (Rivendell Extended) - CHANGELOG
+# RDX Broadcast Control Center Changelog
 
-## [3.1.5] - 2025-10-22 - "Icecast Deployment Fix" Release 🔧
+## v3.1.6 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed GUI sudo authentication for Icecast config deployment
+  - Replaced `sudo` with `pkexec` for GUI-compatible privilege escalation
+  - Fixed ownership setting to correct `root:icecast` (was `icecast2:icecast`)
+  - Added proper PolicyKit integration for seamless GUI password prompts
+  - Enhanced error handling with fallback suggestions if pkexec unavailable
+
+### Technical Improvements
+- Professional config deployment now works seamlessly from GUI
+- Eliminated all terminal dependencies for privilege operations
+- Added comprehensive error reporting for deployment failures
+
+## v3.1.5 (2025-10-22)
 
 ### 🔧 ICECAST CONFIGURATION DEPLOYMENT FIX
 
