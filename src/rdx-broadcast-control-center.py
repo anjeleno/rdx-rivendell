@@ -337,7 +337,7 @@ output.icecast(
   url="{mount_name}",
   name="{stream.get('station_name', 'RDX Station')}",
   description="{stream.get('description', f'{stream["codec"]} stream at {stream["bitrate"]}')}",
-  radio
+    source=radio
 )
 '''
         

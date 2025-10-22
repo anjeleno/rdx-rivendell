@@ -1,5 +1,10 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.10 (2025-10-22)
+### Fixed
+- Liquidsoap: pass stream source explicitly using `source=radio` in `output.icecast(...)` to resolve type mismatch errors in 2.x
+- Update skeleton example (`radio.liq.example`) to use `source=radio`
+
 ## v3.2.9 (2025-10-22)
 ### Fixed
 - Liquidsoap AAC config: quote ffmpeg audio_bitrate value (e.g., "64k") to fix parse error

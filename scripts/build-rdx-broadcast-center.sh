@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.9"
+PACKAGE_VERSION="3.2.10"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -167,14 +167,14 @@ radio = mksafe(radio)
 # Example streams (configure through GUI)
 # MP3 320kbps
 output.icecast(
-  %mp3(bitrate=320),
-  host="localhost",
-  port=8000,
-  password="hackm3",
-  mount="/mp3-320",
-  genre="Broadcast",
-  name="Station Name - MP3 320",
-  radio
+    %mp3(bitrate=320),
+    host="localhost",
+    port=8000,
+    password="hackm3",
+    mount="/mp3-320",
+    genre="Broadcast",
+    name="Station Name - MP3 320",
+    source=radio
 )
 EOF
 
