@@ -1339,7 +1339,10 @@ class ServiceControlTab(QWidget):
                     else:
                         status_label.setText("❌ Stopped")
                         status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
-        
+            except Exception:
+                status_label.setText("❓ Unknown")
+                status_label.setStyleSheet("QLabel { color: #95a5a6; }")
+
     def update_log_view(self):
         """Tail and display the Liquidsoap log inside the UI"""
         try:
@@ -1363,11 +1366,7 @@ class ServiceControlTab(QWidget):
         except Exception:
             # Non-fatal: keep UI responsive even if log read fails
             pass
-                        
-            except Exception:
-                status_label.setText("❓ Unknown")
-                status_label.setStyleSheet("QLabel { color: #95a5a6; }")
-                
+        
     def start_service(self, service_key):
         """Start a specific service automatically"""
         service_info = self.services[service_key]
