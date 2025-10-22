@@ -1,5 +1,16 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.1.8 (2025-10-22)
+### Fixed
+- **CRITICAL**: Fixed missing `get_mount_points()` method error in Icecast config deployment
+  - Replaced non-existent `self.get_mount_points()` call with `len(self.streams)`
+  - Fixed "object has no attribute 'get_mount_points'" error
+  - Deployment success message now shows correct mount point count
+
+### Technical Improvements
+- Corrected mount point counting in deployment confirmation dialog
+- Enhanced error handling for method existence checks
+
 ## v3.1.7 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed PolicyKit authentication loop in Icecast config deployment
