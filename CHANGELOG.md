@@ -1,5 +1,40 @@
 # RDX (Rivendell Extended) - CHANGELOG
 
+## [3.1.5] - 2025-10-22 - "Icecast Deployment Fix" Release 🔧
+
+### 🔧 ICECAST CONFIGURATION DEPLOYMENT FIX
+
+#### Improved Configuration Deployment
+- **FIXED**: `sudo cp` command failing with exit status 1 during config deployment
+- **ENHANCED**: Added comprehensive error reporting with stdout/stderr capture
+- **ADDED**: Automatic backup of original icecast.xml before applying changes
+- **IMPROVED**: Proper file ownership and permissions after config deployment
+
+#### Robust Error Handling
+- **Validation**: Config file existence and content validation before deployment
+- **Debugging**: Detailed error messages showing exact command, exit code, and output
+- **Backup**: Automatic backup of original config to icecast.xml.backup
+- **Permissions**: Proper chown/chmod after successful config deployment
+
+#### Technical Improvements
+- **sudo systemctl**: All service operations now use sudo consistently
+- **File Verification**: Config file readability and content validation
+- **Error Details**: Complete command output capture for debugging
+- **Professional UX**: Clear success/failure feedback with file paths
+
+#### Service Management
+- **Stop Service**: Uses `sudo systemctl stop icecast2` properly
+- **Config Copy**: Enhanced error handling for file copy operations
+- **Ownership**: Sets proper `icecast2:icecast` ownership
+- **Permissions**: Sets secure `640` permissions on config file
+- **Start Service**: Reliable service restart with error capture
+
+### 🎯 **User Experience**
+- **Detailed Feedback**: Users see exactly what went wrong if deployment fails
+- **Backup Safety**: Original config automatically backed up before changes
+- **Professional Operation**: Seamless config deployment when everything works
+- **Debug Information**: Complete error details for troubleshooting
+
 ## [3.1.4] - 2025-10-22 - "Syntax Error Fix" Release 🐛
 
 ### 🐛 CRITICAL SYNTAX ERROR FIX
