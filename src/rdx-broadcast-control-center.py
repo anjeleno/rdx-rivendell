@@ -1683,6 +1683,15 @@ class ServiceControlTab(QWidget):
         new = re.sub(r'audio_bitrate\s*=\s*"(\d+)k"', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
         # Handle unquoted 64k
         new = re.sub(r'audio_bitrate\s*=\s*(\d+)k\b', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
+        # Probe ffmpeg capabilities and adjust codec/format if unsupported
+        codecs, formats = self._probe_ffmpeg_capabilities()
+        # If 'aac' codec not available but libfdk_aac is, switch
+        if codecs is not None:
+            if 'aac' not in codecs and 'libfdk_aac' in codecs:
+                new = re.sub(r'audio_codec\s*=\s*"aac"', 'audio_codec="libfdk_aac"', new)
+        # If 'adts' format not available, remove explicit format parameter
+        if formats is not None and 'adts' not in formats:
+            new = re.sub(r',\s*format\s*=\s*"[^"]+"', '', new)
         # Remove any duplicate commas from earlier insertions
         new = re.sub(r',\s*,', ', ', new)
         if new != txt:
@@ -1690,6 +1699,37 @@ class ServiceControlTab(QWidget):
                 config_file.write_text(new, encoding="utf-8")
             except Exception:
                 pass
+
+    def _probe_ffmpeg_capabilities(self):
+        """Return (codecs, formats) sets supported by Liquidsoap ffmpeg encoder, or (None, None) on failure."""
+        try:
+            res = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+            if res.returncode != 0:
+                return (None, None)
+            out = res.stdout or res.stderr or ""
+            codecs = set()
+            formats = set()
+            # Heuristics: look for sections listing codecs/formats
+            for line in out.splitlines():
+                l = line.strip()
+                if l.startswith("audio_codec") and ":" in l:
+                    # skip option description line
+                    continue
+                if l.startswith("Available audio codecs") or l.startswith("Audio codecs"):
+                    continue
+                if l.startswith("Available formats") or l.startswith("Formats"):
+                    continue
+                # Common tokens
+                for token in ["aac", "libfdk_aac", "adts", "mp4", "mpegts"]:
+                    if token in l:
+                        # naive classification: container formats vs codecs
+                        if token in ("adts", "mp4", "mpegts"):
+                            formats.add(token)
+                        else:
+                            codecs.add(token)
+            return (codecs or None, formats or None)
+        except Exception:
+            return (None, None)
                 
     def configure_service(self, service_key):
         """Configure a specific service"""
@@ -1740,7 +1780,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.16")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.17")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1787,7 +1827,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.16")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.17")
 
 
 def main():
@@ -1795,7 +1835,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.16")
+    app.setApplicationVersion("3.2.17")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

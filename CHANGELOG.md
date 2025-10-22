@@ -180,12 +180,27 @@
 - Added defensive programming for ownership operations
 
 ## v3.1.9 (2025-10-22)
+
+Enhancements
+
+- Liquidsoap ffmpeg adaptive sanitizer: Added runtime capability probe for `encoder.ffmpeg` and stricter auto-fixes
+  - Switches to `audio_codec="libfdk_aac"` when native `aac` is unavailable
+  - Removes explicit `format="adts"` if unsupported by local ffmpeg build
+  - Ensures `audio=true, video=false` and converts `64k` style bitrates to numeric bps
+- Improves reliability of preflight parse checks, reducing `Lang_ffmpeg` parse errors across distros
+- Internal: Minor UI version bump wiring
+
+Packaging
+
+- Builder script bumped to 3.2.17 and rebuilt package
+
 ### Fixed
 - **CRITICAL**: Fixed missing `streams` attribute error in Icecast config deployment
   - Corrected access to streams data from parent's stream_builder tab
   - Used proper inter-tab communication pattern: `self.parent().stream_builder.streams`
   - Fixed "object has no attribute 'streams'" error in IcecastManagementTab
   - Mount point count now correctly retrieved from StreamBuilderTab
+
 
 ### Technical Improvements
 - Implemented proper tab communication for accessing stream configuration data
