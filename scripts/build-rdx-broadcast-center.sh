@@ -1,12 +1,12 @@
 #!/bin/bash
-# RDX Broadcast Control Center Package Builder v3.0.0
+# RDX Broadcast Control Center Package Builder v3.0
 # Creates comprehensive broadcast automation package
 
 set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.3"
+PACKAGE_VERSION="3.2.5"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -31,7 +31,7 @@ mkdir -p "$PACKAGE_DIR/usr/local/bin"
 mkdir -p "$PACKAGE_DIR/usr/share/applications"
 mkdir -p "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME"
 mkdir -p "$PACKAGE_DIR/etc/systemd/system"
-mkdir -p "$PACKAGE_DIR/home/rd/.config/rdx"
+mkdir -p "$PACKAGE_DIR/etc/skel/.config/rdx"
 
 # Copy main application
 echo "📋 Installing main application..."
@@ -108,8 +108,8 @@ if [ ! -f "/usr/local/bin/rdx-broadcast-control-center.py" ]; then
     exit 1
 fi
 
-# Change to home directory
-cd /home/rd 2>/dev/null || cd /tmp
+# Change to invoking user's home directory (do not assume specific user)
+cd "$HOME" 2>/dev/null || cd /tmp
 
 # Launch with error capture
 log_error "Starting RDX Broadcast Control Center"
@@ -148,15 +148,15 @@ EOF
 chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-control-center-debug"
 
 # Create configuration directory with examples
-echo "⚙️ Setting up configuration..."
+echo "⚙️ Setting up configuration templates (skel)..."
 
 # Example Liquidsoap config
-cat > "$PACKAGE_DIR/home/rd/.config/rdx/radio.liq.example" << 'EOF'
+cat > "$PACKAGE_DIR/etc/skel/.config/rdx/radio.liq.example" << 'EOF'
 #!/usr/bin/liquidsoap
 # RDX Generated Liquidsoap Configuration
 # Edit this file through RDX Broadcast Control Center
 
-set("log.file.path", "/home/rd/logs/soap.log")
+set("log.file.path", "/tmp/soap.log")
 set("frame.audio.samplerate", 48000)
 set("icy.metadata", true)
 
@@ -179,7 +179,7 @@ output.icecast(
 EOF
 
 # Example Icecast config
-cat > "$PACKAGE_DIR/home/rd/.config/rdx/icecast.xml.example" << 'EOF'
+cat > "$PACKAGE_DIR/etc/skel/.config/rdx/icecast.xml.example" << 'EOF'
 <icecast>
     <location>Broadcast Station</location>
     <admin>admin@localhost</admin>
@@ -251,10 +251,10 @@ sudo apt-get install -f  # Install dependencies if needed
 \`\`\`
 
 ## Configuration Deployment
-Icecast configurations are prepared for manual deployment by system administrators:
+Icecast configurations are managed by the application and stored per-user:
 \`\`\`bash
-# Configuration files are saved to ~/.config/rdx/deploy/
-# Follow deployment instructions provided by the application
+# Configuration files are saved to ~/.config/rdx/
+# Manage generation and deployment from the GUI
 \`\`\`
 
 ## Usage
@@ -297,7 +297,8 @@ python3 /usr/local/bin/rdx-broadcast-control-center.py
 
 ## Configuration
 - User configs: \`~/.config/rdx/\`
-- Examples: \`/usr/share/doc/$PACKAGE_NAME/\`
+- Examples for new users: \`/etc/skel/.config/rdx/\`
+- Documentation: \`/usr/share/doc/$PACKAGE_NAME/\`
 
 ## Requirements
 - Python 3.6+
@@ -345,26 +346,24 @@ set -e
 
 case "$1" in
     configure)
-        # Create rd user if it doesn't exist
-        if ! id "rd" >/dev/null 2>&1; then
-            useradd -r -s /bin/bash -d /home/rd -m rd
-            echo "Created user 'rd' for Rivendell/RDX operations"
+        # Ensure skeleton examples are in place for new users
+        if [ -d "/etc/skel/.config/rdx" ]; then
+            chmod 755 /etc/skel/.config /etc/skel/.config/rdx 2>/dev/null || true
+            find /etc/skel/.config/rdx -type f -exec chmod 644 {} \; 2>/dev/null || true
         fi
-        
-        # Set up configuration directory
-        if [ ! -d "/home/rd/.config/rdx" ]; then
-            mkdir -p /home/rd/.config/rdx
-            chown rd:rd /home/rd/.config/rdx
-        fi
-        
-        # Create logs directory
-        if [ ! -d "/home/rd/logs" ]; then
-            mkdir -p /home/rd/logs
-            chown rd:rd /home/rd/logs
-        fi
-        
-        # Set permissions
-        chown rd:rd /home/rd/.config/rdx/* 2>/dev/null || true
+
+        # Initialize configuration directory for all existing human users (UID >= 1000)
+        while IFS=: read -r name passwd uid gid gecos home shell; do
+            if [ "$uid" -ge 1000 ] && [ -d "$home" ] && [ -w "$home" ] && [[ "$shell" != *"nologin"* ]] && [[ "$shell" != *"false"* ]]; then
+                # Create ~/.config/rdx with proper ownership and permissions
+                install -d -m 755 -o "$name" -g "$name" "$home/.config/rdx"
+                # Seed example files if available (do not overwrite existing files)
+                if [ -d "/etc/skel/.config/rdx" ]; then
+                    cp -n /etc/skel/.config/rdx/* "$home/.config/rdx/" 2>/dev/null || true
+                fi
+                chown -R "$name":"$name" "$home/.config/rdx" 2>/dev/null || true
+            fi
+        done < <(getent passwd)
         
         # Update desktop database
         if command -v update-desktop-database >/dev/null 2>&1; then
@@ -397,7 +396,7 @@ exit 0
 EOF
 chmod +x "$PACKAGE_DIR/DEBIAN/prerm"
 
-# Create postrm script  
+# Create postrm script
 cat > "$PACKAGE_DIR/DEBIAN/postrm" << 'EOF'
 #!/bin/bash
 set -e
@@ -410,13 +409,13 @@ case "$1" in
         fi
         
         echo "RDX Broadcast Control Center removed."
-        echo "User configurations preserved in /home/rd/.config/rdx/"
+        echo "User configurations preserved in ~/.config/rdx/"
         ;;
         
     purge)
-        # Remove configuration files on purge
-        rm -rf /home/rd/.config/rdx 2>/dev/null || true
-        echo "RDX Broadcast Control Center purged completely."
+        # Remove configuration templates on purge (do not touch user homes)
+        rm -rf /etc/skel/.config/rdx 2>/dev/null || true
+        echo "RDX Broadcast Control Center purged completely (skeleton examples removed)."
         ;;
 esac
 
@@ -437,7 +436,7 @@ cd "$BUILD_DIR"
 dpkg-deb --build "${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}"
 
 # Move to final location
-FINAL_PACKAGE="$RDX_ROOT/deb-builds/${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb"
+FINAL_PACKAGE="$RDX_ROOT/releases/${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb"
 mkdir -p "$(dirname "$FINAL_PACKAGE")"
 mv "${PACKAGE_NAME}_${PACKAGE_VERSION}_${ARCHITECTURE}.deb" "$FINAL_PACKAGE"
 

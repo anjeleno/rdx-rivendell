@@ -1259,13 +1259,43 @@ class ServiceControlTab(QWidget):
         
         layout.addWidget(deps_group)
         
+        # Liquidsoap Log Viewer
+        log_group = QGroupBox("📄 Liquidsoap Log (latest 500 lines)")
+        log_layout = QVBoxLayout(log_group)
+        
+        # Controls row for log
+        log_controls = QHBoxLayout()
+        self.follow_log_checkbox = QCheckBox("Follow")
+        self.follow_log_checkbox.setChecked(True)
+        refresh_btn = QPushButton("Refresh Now")
+        refresh_btn.clicked.connect(self.update_log_view)
+        log_controls.addWidget(self.follow_log_checkbox)
+        log_controls.addStretch(1)
+        log_controls.addWidget(refresh_btn)
+        
+        # Log text area
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setStyleSheet("QTextEdit { font-family: monospace; background: #0e0e0e; color: #e0e0e0; }")
+        self.log_text.setPlaceholderText("Liquidsoap log will appear here after starting the service...")
+        
+        log_layout.addLayout(log_controls)
+        log_layout.addWidget(self.log_text)
+        layout.addWidget(log_group)
+        
         # Status update timer
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.update_all_status)
         self.status_timer.start(3000)  # Check every 3 seconds
         
+        # Log update timer
+        self.log_timer = QTimer()
+        self.log_timer.timeout.connect(self.update_log_view)
+        self.log_timer.start(2000)
+        
         # Initial status check
         self.update_all_status()
+        self.update_log_view()
         
     def update_all_status(self):
         """Update status for all services"""
@@ -1277,6 +1307,16 @@ class ServiceControlTab(QWidget):
                     # Special handling for JACK
                     result = subprocess.run(["jack_lsp"], capture_output=True, text=True)
                     if result.returncode == 0:
+                        status_label.setText("✅ Running")
+                        status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+                    else:
+                        status_label.setText("❌ Stopped")
+                        status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                elif service_key == 'liquidsoap':
+                    # Liquidsoap is launched as a user process (not a systemd unit)
+                    # Detect by process name to reflect actual running state
+                    proc_check = subprocess.run(["pgrep", "-x", "liquidsoap"], capture_output=True)
+                    if proc_check.returncode == 0:
                         status_label.setText("✅ Running")
                         status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
                     else:
@@ -1299,6 +1339,30 @@ class ServiceControlTab(QWidget):
                     else:
                         status_label.setText("❌ Stopped")
                         status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+        
+    def update_log_view(self):
+        """Tail and display the Liquidsoap log inside the UI"""
+        try:
+            config_dir = self.get_config_directory()
+            log_path = config_dir / "liquidsoap.log"
+            if not log_path.exists():
+                self.log_text.setPlaceholderText("No Liquidsoap log found yet. Start Liquidsoap to generate logs.")
+                return
+            # Read last 500 lines to avoid huge memory usage
+            with open(log_path, 'r', errors='ignore') as f:
+                lines = f.readlines()
+            tail_lines = lines[-500:]
+            text = ''.join(tail_lines)
+            # Update only if changed to reduce flicker
+            if self.log_text.toPlainText() != text:
+                self.log_text.setPlainText(text)
+                if self.follow_log_checkbox.isChecked():
+                    cursor = self.log_text.textCursor()
+                    cursor.movePosition(cursor.End)
+                    self.log_text.setTextCursor(cursor)
+        except Exception:
+            # Non-fatal: keep UI responsive even if log read fails
+            pass
                         
             except Exception:
                 status_label.setText("❓ Unknown")
@@ -1319,11 +1383,43 @@ class ServiceControlTab(QWidget):
                 # Start liquidsoap with generated config
                 config_dir = self.get_config_directory()
                 config_file = config_dir / "radio.liq"
+                log_file = config_dir / "liquidsoap.log"
+                
+                # Verify liquidsoap is available
+                import shutil
+                if shutil.which("liquidsoap") is None:
+                    QMessageBox.critical(self, "Liquidsoap Not Found", 
+                                         "The 'liquidsoap' command is not installed or not in PATH.\n"
+                                         "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap').")
+                    return
                 
                 if config_file.exists():
-                    subprocess.Popen(["liquidsoap", str(config_file)])
-                    QMessageBox.information(self, "Liquidsoap Started", 
-                                          f"Liquidsoap started with config: {config_file}")
+                    try:
+                        # Append output to a per-user log for troubleshooting
+                        log_fh = open(log_file, "a", buffering=1)
+                    except Exception:
+                        log_fh = None
+                    
+                    try:
+                        subprocess.Popen(["liquidsoap", str(config_file)],
+                                         stdout=log_fh or subprocess.DEVNULL,
+                                         stderr=log_fh or subprocess.DEVNULL,
+                                         start_new_session=True)
+                        QMessageBox.information(self, "Liquidsoap Started", 
+                                                f"Liquidsoap started with config: {config_file}\n\n"
+                                                f"Logs: {log_file}")
+                    except Exception as e:
+                        if log_fh:
+                            log_fh.close()
+                        QMessageBox.critical(self, "Liquidsoap Start Error", 
+                                             f"Failed to launch Liquidsoap:\n{e}")
+                        return
+                    # Close our handle; child keeps fd open
+                    if log_fh:
+                        try:
+                            log_fh.close()
+                        except Exception:
+                            pass
                 else:
                     QMessageBox.warning(self, "No Config", 
                                       "Please generate Liquidsoap configuration first in Stream Builder tab.")
@@ -1389,11 +1485,40 @@ class ServiceControlTab(QWidget):
                 
                 config_dir = self.get_config_directory()
                 config_file = config_dir / "radio.liq"
+                log_file = config_dir / "liquidsoap.log"
+                
+                # Verify liquidsoap is available
+                import shutil
+                if shutil.which("liquidsoap") is None:
+                    QMessageBox.critical(self, "Liquidsoap Not Found", 
+                                         "The 'liquidsoap' command is not installed or not in PATH.\n"
+                                         "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap').")
+                    return
                 
                 if config_file.exists():
-                    subprocess.Popen(["liquidsoap", str(config_file)])
-                    QMessageBox.information(self, "Liquidsoap Restarted", 
-                                          f"Liquidsoap restarted with config: {config_file}")
+                    try:
+                        log_fh = open(log_file, "a", buffering=1)
+                    except Exception:
+                        log_fh = None
+                    try:
+                        subprocess.Popen(["liquidsoap", str(config_file)],
+                                         stdout=log_fh or subprocess.DEVNULL,
+                                         stderr=log_fh or subprocess.DEVNULL,
+                                         start_new_session=True)
+                        QMessageBox.information(self, "Liquidsoap Restarted", 
+                                                f"Liquidsoap restarted with config: {config_file}\n\n"
+                                                f"Logs: {log_file}")
+                    except Exception as e:
+                        if log_fh:
+                            log_fh.close()
+                        QMessageBox.critical(self, "Liquidsoap Restart Error", 
+                                             f"Failed to launch Liquidsoap:\n{e}")
+                        return
+                    if log_fh:
+                        try:
+                            log_fh.close()
+                        except Exception:
+                            pass
                 else:
                     QMessageBox.warning(self, "No Config", 
                                       "Please generate Liquidsoap configuration first in Stream Builder tab.")
