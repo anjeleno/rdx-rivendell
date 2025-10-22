@@ -1,12 +1,20 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.15 (2025-10-22)
+### Improved
+- Dependency assurance: Now declares `liquidsoap (>= 2.0.0)` and `liquidsoap-plugin-ffmpeg` as hard dependencies so apt installs them during app installation
+- UI check: Before starting Liquidsoap, the app detects if the FFmpeg encoder plugin is missing and shows a precise install hint
+
+### Packaging
+- Builder script bumped to 3.2.15 and rebuilt package
+
+### Packaging
+- Builder script bumped to 3.2.14 and rebuilt package
+
 ## v3.2.14 (2025-10-22)
 ### Fixed
 - Hotfix: Moved status bar initialization inside `setup_ui()` and corrected `setWindowTitle` indentation in `__init__`
 - Resolves NameError and IndentationError seen when launching from desktop shortcut
-
-### Packaging
-- Builder script bumped to 3.2.14 and rebuilt package
 
 ## v3.2.13 (2025-10-22)
 ### Fixed

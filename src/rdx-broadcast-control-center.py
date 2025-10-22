@@ -1400,22 +1400,35 @@ class ServiceControlTab(QWidget):
                                          "The 'liquidsoap' command is not installed or not in PATH.\n"
                                          "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
                     return
+                # Verify ffmpeg encoder plugin availability
+                try:
+                    plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+                    if plugin_check.returncode != 0:
+                        QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
+                                             "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
+                                             "Install it with:\n  sudo apt install liquidsoap-plugin-ffmpeg\n\n"
+                                             "Then try starting Liquidsoap again.")
+                        return
+                except Exception:
+                    pass
                 # Parse-check Liquidsoap config before launching
                 check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
                 if check.returncode != 0:
-                    msg = (check.stderr or check.stdout or "Unknown parse error").strip()
-                    QMessageBox.critical(self, "Liquidsoap Config Error",
-                                         f"Failed to parse Liquidsoap config:\n\n{msg}")
-                    return
-                    # Attempt auto-fix for common issues and re-check once
-                # Sanitize config for common issues (unquoted bitrate, source label)
-                self.sanitize_liquidsoap_config(config_file)
-                check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
-                if check2.returncode != 0:
-                    msg = (check2.stderr or check2.stdout or "Unknown parse error").strip()
-                    QMessageBox.critical(self, "Liquidsoap Config Error",
-                                         f"Failed to parse Liquidsoap config after auto-fix:\n\n{msg}")
-                    return
+                    # Attempt auto-fix for common issues and re-check up to two strategies
+                    orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
+                    # Sanitize config for common issues (unquoted bitrate, source label, ffmpeg audio flags)
+                    self.sanitize_liquidsoap_config(config_file)
+                    check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                    if check2.returncode != 0:
+                        # Secondary, stricter sanitation: switch ffmpeg bitrate to numeric (e.g., 64k -> 64000)
+                        self.sanitize_liquidsoap_config_strict(config_file)
+                        check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                        if check3.returncode != 0:
+                            msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
+                            msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
+                            QMessageBox.critical(self, "Liquidsoap Config Error",
+                                                 f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
+                            return
                 
                 if config_file.exists():
                     try:
@@ -1518,21 +1531,33 @@ class ServiceControlTab(QWidget):
                                          "The 'liquidsoap' command is not installed or not in PATH.\n"
                                          "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
                     return
+                # Verify ffmpeg encoder plugin availability
+                try:
+                    plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+                    if plugin_check.returncode != 0:
+                        QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
+                                             "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
+                                             "Install it with:\n  sudo apt install liquidsoap-plugin-ffmpeg\n\n"
+                                             "Then try restarting Liquidsoap again.")
+                        return
+                except Exception:
+                    pass
                 # Parse-check Liquidsoap config before launching
                 check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
                 if check.returncode != 0:
-                    msg = (check.stderr or check.stdout or "Unknown parse error").strip()
-                    QMessageBox.critical(self, "Liquidsoap Config Error",
-                                         f"Failed to parse Liquidsoap config:\n\n{msg}")
-                    return
-                # Sanitize config for common issues and re-check
-                self.sanitize_liquidsoap_config(config_file)
-                check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
-                if check2.returncode != 0:
-                    msg = (check2.stderr or check2.stdout or "Unknown parse error").strip()
-                    QMessageBox.critical(self, "Liquidsoap Config Error",
-                                         f"Failed to parse Liquidsoap config after auto-fix:\n\n{msg}")
-                    return
+                    # Attempt auto-fix then strict fix as needed
+                    orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
+                    self.sanitize_liquidsoap_config(config_file)
+                    check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                    if check2.returncode != 0:
+                        self.sanitize_liquidsoap_config_strict(config_file)
+                        check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                        if check3.returncode != 0:
+                            msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
+                            msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
+                            QMessageBox.critical(self, "Liquidsoap Config Error",
+                                                 f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
+                            return
                 
                 if config_file.exists():
                     try:
@@ -1626,6 +1651,39 @@ class ServiceControlTab(QWidget):
                 config_file.write_text(new, encoding="utf-8")
             except Exception:
                 pass
+
+    def sanitize_liquidsoap_config_strict(self, config_file: Path):
+        """Apply stricter fixes for Liquidsoap/FFmpeg compatibility.
+        - Ensure ffmpeg has audio=true, video=false
+        - Convert audio_bitrate values like "64k" or 64k to integer bits per second (e.g., 64000)
+        - Keep positional source for output.icecast
+        """
+        try:
+            txt = config_file.read_text(encoding="utf-8")
+        except Exception:
+            return
+        new = txt
+        # Ensure audio flags present
+        new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
+        # Replace quoted or unquoted Nxk with integer Nx000 (approximate kbps to bps)
+        def kb_to_bps(match):
+            num = match.group(1)
+            try:
+                val = int(num)
+            except Exception:
+                return match.group(0)
+            return f"{val}000"
+        # Handle quoted "64k"
+        new = re.sub(r'audio_bitrate\s*=\s*"(\d+)k"', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
+        # Handle unquoted 64k
+        new = re.sub(r'audio_bitrate\s*=\s*(\d+)k\b', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
+        # Remove any duplicate commas from earlier insertions
+        new = re.sub(r',\s*,', ', ', new)
+        if new != txt:
+            try:
+                config_file.write_text(new, encoding="utf-8")
+            except Exception:
+                pass
                 
     def configure_service(self, service_key):
         """Configure a specific service"""
@@ -1676,7 +1734,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.14")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.15")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1723,7 +1781,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.14")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.15")
 
 
 def main():
@@ -1731,7 +1789,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.14")
+    app.setApplicationVersion("3.2.15")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
