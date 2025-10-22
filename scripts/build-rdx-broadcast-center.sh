@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.0.0"
+PACKAGE_VERSION="3.0.1"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -217,7 +217,7 @@ Section: sound
 Priority: optional
 Architecture: $ARCHITECTURE
 Maintainer: $MAINTAINER
-Depends: python3 (>= 3.6), python3-pyqt5, python3-pyqt5.qtwidgets
+Depends: python3 (>= 3.6), python3-pyqt5
 Recommends: jackd2, liquidsoap, icecast2, qjackctl
 Suggests: stereo-tool
 Description: $DESCRIPTION
