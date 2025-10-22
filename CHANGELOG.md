@@ -1,5 +1,45 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.7 (2025-10-22)
+### Changed
+- Version bump to v3.2.7 and packaging refresh
+
+### Docs
+- Added/updated changelog entries for v3.2.4–v3.2.6
+
+## v3.2.6 (2025-10-22)
+### Fixed
+- Resolved Python IndentationError and SyntaxError introduced during log viewer integration
+
+### Improved
+- Stabilized in-app Liquidsoap log viewer (auto-refresh timer, Follow toggle, manual Refresh)
+- Polished Service Control status updates and UI behavior
+
+### Packaging
+- Bumped package and published clean v3.2.6 release
+- Ensured .deb artifacts are saved under `releases/`
+
+## v3.2.5 (2025-10-22)
+### Added
+- In-app Liquidsoap log viewer in Service Control tab
+  - Per-user log at `~/.config/rdx/liquidsoap.log`
+  - "Follow" checkbox and Refresh button
+
+### Fixed
+- Reliable Liquidsoap status detection using process checks (pgrep)
+- Start/Restart launches Liquidsoap detached and captures stdout/stderr to per-user log
+
+### Changed
+- Launchers updated to use `$HOME` and be user-agnostic
+
+## v3.2.4 (2025-10-22)
+### Changed
+- Universalized installer: removed `/home/rd` assumptions across packaging
+- `postinst` now seeds `/etc/skel/.config/rdx` with examples for new users
+- Automatically creates `~/.config/rdx` for all existing human users with correct ownership and permissions
+- Moved build artifacts to `releases/` for predictable output location
+- Desktop launcher updated to be user-agnostic and use `$HOME`
+
 ## v3.2.3 (2025-10-22)
 ### Fixed
 - **CRITICAL**: Fixed config directory permissions issue preventing stream loading
