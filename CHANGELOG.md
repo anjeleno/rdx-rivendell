@@ -1,5 +1,47 @@
 # RDX (Rivendell Extended) - CHANGELOG
 
+## [3.1.2] - 2025-10-22 - "Stream Persistence" Release 💾
+
+### 🎯 MAJOR FEATURE: Stream Persistence System
+
+#### Zero-Loss Stream Management
+- **Automatic Stream Saving**: All configured streams automatically saved to disk
+- **Seamless Reload**: Streams persist between application restarts
+- **Professional Config Handling**: Uses standard directory patterns like VLC
+- **No More Lost Configurations**: Eliminates "streams disappear after closing app" issue
+
+#### Robust Configuration Directory Handling
+- **Standard Location**: Prioritizes `~/.config/rdx/` (XDG standard)
+- **Smart Fallback**: Falls back to `~/.rdx/` if permission issues exist
+- **Emergency Fallback**: Uses temp directory as last resort
+- **Permission-Safe**: Complete elimination of config file permission errors
+
+#### Data Persistence Features
+- **Stream Configuration**: All stream settings saved to `streams.json`
+- **Auto-Save**: Streams automatically saved when added or removed
+- **Data Integrity**: JSON format ensures reliable data storage
+- **Cross-Session**: Configurations persist across application restarts
+
+#### Technical Improvements
+- **Professional Implementation**: Matches config handling standards used by major applications
+- **Error Recovery**: Graceful handling of permission issues and corrupted files
+- **User-Specific**: Each user gets their own isolated configuration
+- **Complete sudo Elimination**: No root permission requirements anywhere
+
+#### Directory Structure
+```
+~/.config/rdx/  (or ~/.rdx/ fallback)
+├── streams.json      # Your saved streams
+├── radio.liq         # Generated Liquidsoap config
+└── icecast.xml       # Generated Icecast config
+```
+
+#### User Experience
+- **Zero Configuration**: Works out of the box for all users
+- **No More Lost Streams**: Streams persist between sessions
+- **Professional Quality**: Config handling matches industry standards
+- **Error-Free**: No more permission denied errors
+
 ## [2.1.0] - 2025-10-21 - "Automated Pro" Release 🤖
 
 ### 🚀 BREAKTHROUGH: Fully Automated Dependency Installation

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.0.0
+RDX Professional Broadcast Control Center v3.1.2
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -27,6 +27,7 @@ class StreamBuilderTab(QWidget):
         super().__init__()
         self.streams = []  # List to store configured streams
         self.setup_ui()
+        self.load_streams()  # Load saved streams on startup
         
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -163,6 +164,9 @@ class StreamBuilderTab(QWidget):
         # Update table
         self.refresh_streams_table()
         
+        # Save streams persistently
+        self.save_streams()
+        
         # Clear inputs
         self.mount_input.clear()
         self.station_name_input.clear()
@@ -194,6 +198,7 @@ class StreamBuilderTab(QWidget):
         if 0 <= row < len(self.streams):
             removed_stream = self.streams.pop(row)
             self.refresh_streams_table()
+            self.save_streams()  # Save after removal
             self.status_text.append(f"🗑️ Removed stream: {removed_stream['codec']} {removed_stream['bitrate']} → {removed_stream['mount']}")
             
     def generate_liquidsoap_config(self):
@@ -203,11 +208,8 @@ class StreamBuilderTab(QWidget):
             return
             
         try:
-            # Get current user's config directory
-            config_dir = Path.home() / ".config" / "rdx"
-            
-            # Ensure directory exists with proper permissions
-            self.ensure_config_directory(config_dir)
+            # Get config directory
+            config_dir = self.get_config_directory()
             
             liquidsoap_config = self.build_liquidsoap_config()
             
@@ -220,44 +222,33 @@ class StreamBuilderTab(QWidget):
         except Exception as e:
             self.status_text.append(f"❌ Failed to write config: {str(e)}")
             
-    def ensure_config_directory(self, config_dir):
-        """Ensure config directory exists and is writable by current user"""
+    def get_config_directory(self):
+        """Get the application config directory, creating it if needed"""
         import os
-        import stat
+        
+        # Try standard config directory first
+        config_dir = Path.home() / ".config" / "rdx"
         
         try:
-            # Create directory if it doesn't exist
+            # Create and test if we can write to standard location
             config_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Check if we can write to it
-            if not os.access(config_dir, os.W_OK):
-                # Directory exists but we can't write to it (likely owned by root)
-                # Try to fix ownership to current user
-                current_user = os.getenv('USER') or os.getenv('LOGNAME')
-                if current_user:
-                    try:
-                        # Get current user's UID and GID
-                        import pwd
-                        user_info = pwd.getpwnam(current_user)
-                        
-                        # Change ownership to current user
-                        os.chown(config_dir, user_info.pw_uid, user_info.pw_gid)
-                        
-                        # Set proper permissions (755)
-                        os.chmod(config_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                        
-                    except (PermissionError, KeyError, OSError):
-                        # If we can't fix ownership, create a fallback directory
-                        fallback_dir = Path.home() / ".rdx-config"
-                        fallback_dir.mkdir(parents=True, exist_ok=True)
-                        if fallback_dir != config_dir:
-                            config_dir = fallback_dir
-                            self.status_text.append(f"ℹ️ Using fallback config directory: {config_dir}")
-                            
-        except Exception as e:
-            raise Exception(f"Cannot create configuration directory: {str(e)}")
-            
-        return config_dir
+            test_file = config_dir / ".test"
+            test_file.touch()
+            test_file.unlink()
+            return config_dir
+        except (PermissionError, OSError):
+            # If standard location fails, try creating in home directory
+            fallback_dir = Path.home() / ".rdx"
+            try:
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                return fallback_dir
+            except (PermissionError, OSError):
+                # Last resort - use temp directory with user-specific name
+                import tempfile
+                import getpass
+                temp_dir = Path(tempfile.gettempdir()) / f"rdx-{getpass.getuser()}"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                return temp_dir
             
     def build_liquidsoap_config(self):
         """Build Liquidsoap configuration string"""
@@ -330,6 +321,35 @@ output.icecast(
         # This will be implemented in the Icecast management tab
         self.status_text.append("📡 Stream configuration ready for Icecast application")
         self.status_text.append("🔄 Switch to Icecast Management tab to apply configuration")
+
+    def save_streams(self):
+        """Save current streams configuration to config file"""
+        try:
+            config_dir = self.get_config_directory()
+            streams_file = config_dir / "streams.json"
+            
+            with open(streams_file, 'w') as f:
+                json.dump(self.streams, f, indent=2)
+                
+        except Exception as e:
+            self.status_text.append(f"⚠️ Failed to save streams: {str(e)}")
+            
+    def load_streams(self):
+        """Load streams configuration from config file"""
+        try:
+            config_dir = self.get_config_directory()
+            streams_file = config_dir / "streams.json"
+            
+            if streams_file.exists():
+                with open(streams_file, 'r') as f:
+                    self.streams = json.load(f)
+                self.refresh_streams_table()
+                if self.streams:
+                    self.status_text.append(f"✅ Loaded {len(self.streams)} saved stream(s)")
+                    
+        except Exception as e:
+            self.status_text.append(f"⚠️ Failed to load streams: {str(e)}")
+            self.streams = []  # Reset to empty list if loading fails
 
 
 class IcecastManagementTab(QWidget):
@@ -479,11 +499,8 @@ class IcecastManagementTab(QWidget):
     def generate_icecast_config(self):
         """Generate Icecast configuration"""
         try:
-            # Get current user's config directory
-            config_dir = Path.home() / ".config" / "rdx"
-            
-            # Ensure directory exists with proper permissions
-            config_dir = self.ensure_config_directory(config_dir)
+            # Get config directory
+            config_dir = self.get_config_directory()
             
             icecast_config = self.build_icecast_config()
             
@@ -693,15 +710,16 @@ class IcecastManagementTab(QWidget):
         
     def apply_icecast_config(self):
         """Save configuration for manual deployment"""
-        config_file = Path.home() / ".config" / "rdx" / "icecast.xml"
+        # Get config directory
+        config_dir = self.get_config_directory()
+        config_file = config_dir / "icecast.xml"
+        
         if not config_file.exists():
             QMessageBox.warning(self, "No Config", "Please generate configuration first.")
             return
             
-        # Create deployment directory with proper permissions
-        base_config_dir = Path.home() / ".config" / "rdx"
-        base_config_dir = self.ensure_config_directory(base_config_dir)
-        deploy_dir = base_config_dir / "deploy"
+        # Create deployment directory
+        deploy_dir = config_dir / "deploy"
         deploy_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy config to deployment location
@@ -1288,7 +1306,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("🎯 RDX Professional Broadcast Control Center v3.0.0")
+        self.setWindowTitle("🎯 RDX Professional Broadcast Control Center v3.1.2")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1335,7 +1353,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.0.0")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.1.2")
 
 
 def main():
@@ -1343,7 +1361,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.0.0")
+    app.setApplicationVersion("3.1.2")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
