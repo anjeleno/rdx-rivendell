@@ -2079,7 +2079,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.29")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.29")
 
 
 def main():
