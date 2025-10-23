@@ -15,7 +15,7 @@ need_root_pkgs=(
   libpcre3-dev libtag1-dev libmad0-dev libfaad-dev libfdk-aac-dev
   libasound2-dev libpulse-dev libjack-jackd2-dev
   libavcodec-dev libavformat-dev libavutil-dev libswresample-dev
-  libssl-dev zlib1g-dev libflac-dev libogg-dev libvorbis-dev libsamplerate0-dev libsoxr-dev
+  libssl-dev zlib1g-dev libflac-dev libogg-dev libvorbis-dev libopus-dev libmp3lame-dev libsamplerate0-dev libsoxr-dev
 )
 
 # Determine target user when invoked via pkexec or sudo
@@ -111,6 +111,19 @@ EOF
   fi
   if ! "${liq_bin}" -h encoder.ffmpeg >/dev/null 2>&1; then
     warn "encoder.ffmpeg help not available; check libav* dev packages"
+  fi
+
+  # Optional: if FDK-AAC dev libraries are present but encoder not detected, try a one-time rebuild
+  if dpkg -s libfdk-aac-dev >/dev/null 2>&1; then
+    if ! "${liq_bin}" -h encoder.fdkaac >/dev/null 2>&1; then
+      warn "libfdk-aac-dev is installed but encoder.fdkaac not detected. Attempting opam reinstall of liquidsoap…"
+      OPAMYES=1 opam reinstall -y liquidsoap || warn "opam reinstall liquidsoap failed; continuing with current build"
+      if ! "${liq_bin}" -h encoder.fdkaac >/dev/null 2>&1; then
+        warn "FDK-AAC still not detected after rebuild; falling back to FFmpeg AAC in RDX when needed."
+      else
+        log "FDK-AAC encoder detected after rebuild."
+      fi
+    fi
   fi
 
   log "OPAM Liquidsoap installed at ${liq_bin}"

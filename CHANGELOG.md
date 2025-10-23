@@ -1,5 +1,24 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.28 (2025-10-22)
+### Added
+- Service Control: compact encoder capability line (e.g., "Encoders: fdkaac, ffmpeg, mp3, opus"). It auto-refreshes after start/restart and hides itself if no encoders are detected to avoid UI clutter.
+- OPAM installer: post-install verification that checks `liquidsoap --list-encoders` and, if `libfdk-aac-dev` is present but `encoder.fdkaac` is missing, performs a one-time `opam reinstall liquidsoap` to pick up FDK-AAC.
+
+### Improved
+- OPAM-aware detection and startup logic: capability-based checks (via `liquidsoap --list-encoders`/`--version`) instead of relying on apt package names.
+- AAC is validated only when the generated config actually requests it. Either `fdkaac` or `ffmpeg` AAC satisfies AAC output; non-AAC streams are never blocked by AAC checks.
+- Stream Builder AAC generation: prefer `%fdkaac` when available; fallback to `%ffmpeg` with explicit typing (`audio=true, video=false`) and sane defaults compatible with Liquidsoap 2.x.
+- Unified logging: Liquidsoap log path is now `~/.config/rdx/liquidsoap.log` across generator and UI.
+- OPAM installer ensures dev libs for MP3/Opus/Vorbis/FLAC/FFmpeg so other codecs continue to work out of the box when using OPAM.
+
+### Fixed
+- Fallback installer heredoc/redirect syntax error that occasionally broke non-interactive installs.
+
+### Packaging
+- Includes `/usr/share/rdx/install-liquidsoap-opam.sh` with the verify-and-rebuild step for FDK-AAC pickup.
+- Builder bumped to 3.2.28 and `.deb` rebuilt and attached to the release.
+
 ## v3.2.27 (2025-10-22)
 ### Added
 - In-app installer now offers a PPA-free option: "Build via OPAM" which compiles Liquidsoap per-user with AAC/FFmpeg support

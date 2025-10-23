@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.27
+RDX Professional Broadcast Control Center v3.2.28
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -76,7 +76,7 @@ class StreamBuilderTab(QWidget):
 
         # Actions (Generate/Apply)
         actions_row = QHBoxLayout()
-        gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
+    gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
         gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
         gen_btn.setMinimumHeight(40)
         gen_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -273,7 +273,8 @@ class StreamBuilderTab(QWidget):
         """Build Liquidsoap configuration string"""
         config = '''#!/usr/bin/liquidsoap
 
-set("log.file.path", "/home/rd/logs/soap.log")
+# Log to user config directory so the in-app log viewer can read it
+set("log.file.path", getenv("HOME") ^ "/.config/rdx/liquidsoap.log")
 
 # Set sample rate to 48kHz
 set("frame.audio.samplerate", 48000)
@@ -1203,6 +1204,15 @@ class ServiceControlTab(QWidget):
             config_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; }")
             config_btn.clicked.connect(lambda checked, s=service_key: self.configure_service(s))
             services_layout.addWidget(config_btn, row, 5)
+
+            # Optional, compact capability line for Liquidsoap encoders
+            if service_key == 'liquidsoap':
+                self.liquidsoap_encoders_label = QLabel("")
+                self.liquidsoap_encoders_label.setStyleSheet(
+                    "QLabel { color: #7f8c8d; font-size: 10px; }"
+                )
+                self.liquidsoap_encoders_label.setVisible(False)
+                services_layout.addWidget(self.liquidsoap_encoders_label, row, 6)
             
             row += 1
             
@@ -1284,6 +1294,70 @@ class ServiceControlTab(QWidget):
         # Initial status check
         self.update_all_status()
         self.update_log_view()
+        # Initial one-time probe for Liquidsoap encoder capabilities
+        self._last_liq_probe_ts = 0.0
+        self.update_liquidsoap_encoders_label(force=True)
+
+    def update_liquidsoap_encoders_label(self, force: bool = False):
+        """Update the compact Liquidsoap encoders label with detected capabilities.
+        Keeps UI uncluttered by hiding if nothing is found or liquidsoap missing.
+        """
+        label = getattr(self, 'liquidsoap_encoders_label', None)
+        if label is None:
+            return
+        try:
+            import shutil, time as _time
+            if shutil.which("liquidsoap") is None:
+                label.setVisible(False)
+                return
+            now = _time.time()
+            if not force and hasattr(self, '_last_liq_probe_ts') and (now - getattr(self, '_last_liq_probe_ts', 0.0) < 30.0):
+                return
+            self._last_liq_probe_ts = now
+
+            names = ["fdkaac", "ffmpeg", "mp3", "opus", "vorbis", "flac"]
+            available = []
+            for n in names:
+                if self._has_liquidsoap_encoder(n):
+                    available.append(n)
+            if available:
+                txt = "Encoders: " + ", ".join(available)
+                label.setText(txt)
+                label.setToolTip("Detected Liquidsoap encoders: " + ", ".join(available))
+                label.setVisible(True)
+            else:
+                label.setVisible(False)
+        except Exception:
+            # On any error, hide to avoid UI noise
+            label.setVisible(False)
+
+    def _has_liquidsoap_encoder(self, name: str) -> bool:
+        """Return True if 'encoder.<name>' help is available (plugin built/linked)."""
+        try:
+            res = subprocess.run(["liquidsoap", "-h", f"encoder.{name}"], capture_output=True, text=True)
+            out = (res.stdout or "") + (res.stderr or "")
+            return res.returncode == 0 and "Plugin not found" not in out
+        except Exception:
+            return False
+
+    def _config_requests_aac(self, config_file: Path) -> bool:
+        """Return True if the given config file appears to request an AAC output.
+        Heuristics: looks for '%fdkaac(' or ffmpeg with audio_codec="aac".
+        """
+        try:
+            if not config_file.exists():
+                return False
+            txt = config_file.read_text(encoding="utf-8", errors="ignore")
+            if re.search(r"%fdkaac\s*\(", txt):
+                return True
+            if re.search(r"%ffmpeg\s*\(.*audio_codec\s*=\s*\"aac\"", txt, flags=re.IGNORECASE | re.DOTALL):
+                return True
+            # Also consider generic AAC mentions in encoder lines
+            if re.search(r"encoder\.(ffmpeg|aac).*aac", txt, flags=re.IGNORECASE):
+                return True
+            return False
+        except Exception:
+            return False
         
     def update_all_status(self):
         """Update status for all services"""
@@ -1375,35 +1449,34 @@ class ServiceControlTab(QWidget):
                 import shutil
                 if shutil.which("liquidsoap") is None:
                     QMessageBox.critical(self, "Liquidsoap Not Found",
-                                         "The 'liquidsoap' command is not installed or not in PATH.\n"
-                                         "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
+                                         "The 'liquidsoap' command is not installed or not in PATH.\n\n"
+                                         "Recommended: Build via OPAM (PPA-free) from the installer dialog, or run:\n"
+                                         "  pkexec /bin/bash /usr/share/rdx/install-liquidsoap-opam.sh\n\n"
+                                         "Alternative (may lack codecs):\n  sudo apt install liquidsoap")
                     return
-                # Verify ffmpeg encoder plugin availability
+                # If AAC is requested by the config, ensure at least one AAC path is available
                 try:
-                    plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
-                    out = (plugin_check.stdout or "") + "\n" + (plugin_check.stderr or "")
-                    if plugin_check.returncode != 0 or "Plugin not found" in out:
-                        # Offer guided installation
-                        if self.prompt_install_ffmpeg_plugin():
-                            # Re-check after install
-                            plugin_check2 = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
-                            out2 = (plugin_check2.stdout or "") + "\n" + (plugin_check2.stderr or "")
-                            if plugin_check2.returncode != 0 or "Plugin not found" in out2:
-                                QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
-                                                     "FFmpeg encoder plugin still not available after installation attempt.\n\n"
-                                                     "Please install one of: liquidsoap-plugin-ffmpeg | liquidsoap-plugin-all | liquidsoap-plugin-extra\n"
-                                                     "or enable the official Liquidsoap repository and try again.")
+                    if self._config_requests_aac(config_file):
+                        has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
+                        has_ffmpeg = self._has_liquidsoap_encoder("ffmpeg")
+                        if not (has_fdkaac or has_ffmpeg):
+                            # Offer guided installation (OPAM preferred) if no AAC encoders are available
+                            if self.prompt_install_ffmpeg_plugin():
+                                # Re-check after install
+                                has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
+                                has_ffmpeg = self._has_liquidsoap_encoder("ffmpeg")
+                                if not (has_fdkaac or has_ffmpeg):
+                                    QMessageBox.critical(self, "Liquidsoap AAC Encoder Missing",
+                                                         "No AAC encoder is available (fdkaac or ffmpeg).\n\n"
+                                                         "Consider building Liquidsoap via OPAM for full codec support, or install plugin packages where available.")
+                                    return
+                            else:
+                                QMessageBox.critical(self, "Liquidsoap AAC Encoder Missing",
+                                                     "No AAC encoder is available (fdkaac or ffmpeg).\n\n"
+                                                     "Options: Use MP3-only streams for now, or install Liquidsoap via OPAM for AAC support.")
                                 return
-                        else:
-                            QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
-                                                 "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
-                                                 "Install one of the following (varies by distro):\n"
-                                                 "  sudo apt install liquidsoap-plugin-ffmpeg\n"
-                                                 "  sudo apt install liquidsoap-plugin-all\n"
-                                                 "  sudo apt install liquidsoap-plugin-extra\n\n"
-                                                 "Then try starting Liquidsoap again.")
-                            return
                 except Exception:
+                    # Don't block start if detection fails; parse-check will validate
                     pass
 
                 # Parse-check Liquidsoap config before launching
@@ -1436,6 +1509,8 @@ class ServiceControlTab(QWidget):
                         QMessageBox.information(self, "Liquidsoap Started",
                                                 f"Liquidsoap started with config: {config_file}\n\n"
                                                 f"Logs: {log_file}")
+                        # Refresh encoders line shortly after start
+                        QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
                     except Exception as e:
                         if log_fh:
                             log_fh.close()
@@ -1521,32 +1596,30 @@ class ServiceControlTab(QWidget):
                 import shutil
                 if shutil.which("liquidsoap") is None:
                     QMessageBox.critical(self, "Liquidsoap Not Found",
-                                         "The 'liquidsoap' command is not installed or not in PATH.\n"
-                                         "Please install Liquidsoap (e.g., 'sudo apt install liquidsoap liquidsoap-plugin-ffmpeg').")
+                                         "The 'liquidsoap' command is not installed or not in PATH.\n\n"
+                                         "Recommended: Build via OPAM (PPA-free) from the installer dialog, or run:\n"
+                                         "  pkexec /bin/bash /usr/share/rdx/install-liquidsoap-opam.sh\n\n"
+                                         "Alternative (may lack codecs):\n  sudo apt install liquidsoap")
                     return
-                # Verify ffmpeg encoder plugin availability
+                # If AAC is requested by the config, ensure at least one AAC path is available
                 try:
-                    plugin_check = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
-                    out = (plugin_check.stdout or "") + "\n" + (plugin_check.stderr or "")
-                    if plugin_check.returncode != 0 or "Plugin not found" in out:
-                        if self.prompt_install_ffmpeg_plugin():
-                            plugin_check2 = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
-                            out2 = (plugin_check2.stdout or "") + "\n" + (plugin_check2.stderr or "")
-                            if plugin_check2.returncode != 0 or "Plugin not found" in out2:
-                                QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
-                                                     "FFmpeg encoder plugin still not available after installation attempt.\n\n"
-                                                     "Please install one of: liquidsoap-plugin-ffmpeg | liquidsoap-plugin-all | liquidsoap-plugin-extra\n"
-                                                     "or enable the official Liquidsoap repository and try again.")
+                    if self._config_requests_aac(config_file):
+                        has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
+                        has_ffmpeg = self._has_liquidsoap_encoder("ffmpeg")
+                        if not (has_fdkaac or has_ffmpeg):
+                            if self.prompt_install_ffmpeg_plugin():
+                                has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
+                                has_ffmpeg = self._has_liquidsoap_encoder("ffmpeg")
+                                if not (has_fdkaac or has_ffmpeg):
+                                    QMessageBox.critical(self, "Liquidsoap AAC Encoder Missing",
+                                                         "No AAC encoder is available (fdkaac or ffmpeg).\n\n"
+                                                         "Consider building Liquidsoap via OPAM for full codec support, or install plugin packages where available.")
+                                    return
+                            else:
+                                QMessageBox.critical(self, "Liquidsoap AAC Encoder Missing",
+                                                     "No AAC encoder is available (fdkaac or ffmpeg).\n\n"
+                                                     "Options: Use MP3-only streams for now, or install Liquidsoap via OPAM for AAC support.")
                                 return
-                        else:
-                            QMessageBox.critical(self, "Liquidsoap FFmpeg Plugin Missing",
-                                                 "The FFmpeg encoder plugin for Liquidsoap is not available.\n\n"
-                                                 "Install one of the following (varies by distro):\n"
-                                                 "  sudo apt install liquidsoap-plugin-ffmpeg\n"
-                                                 "  sudo apt install liquidsoap-plugin-all\n"
-                                                 "  sudo apt install liquidsoap-plugin-extra\n\n"
-                                                 "Then try restarting Liquidsoap again.")
-                            return
                 except Exception:
                     pass
 
@@ -1580,6 +1653,8 @@ class ServiceControlTab(QWidget):
                         QMessageBox.information(self, "Liquidsoap Restarted",
                                                 f"Liquidsoap restarted with config: {config_file}\n\n"
                                                 f"Logs: {log_file}")
+                        # Refresh encoders line shortly after restart
+                        QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
                     except Exception as e:
                         if log_fh:
                             log_fh.close()
@@ -1729,6 +1804,15 @@ verify
                     return False
 
             if mode == "opam":
+                # Quick self-check to surface environment to the user
+                try:
+                    v = subprocess.run(["bash", "-lc", "liquidsoap --version"], capture_output=True, text=True)
+                    e = subprocess.run(["bash", "-lc", "liquidsoap --list-encoders | head -n 200"], capture_output=True, text=True)
+                    log_view.append("\n--- Verification ---")
+                    log_view.append((v.stdout or v.stderr or "").strip())
+                    log_view.append((e.stdout or e.stderr or "").strip())
+                except Exception:
+                    pass
                 QMessageBox.information(self, "OPAM Install Complete",
                                         "Liquidsoap was built via OPAM. If this is your first OPAM install, you may need to restart RDX for PATH to refresh.\n\nRechecking availability…")
             else:
@@ -1913,7 +1997,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.23")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.28")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -1960,7 +2044,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.23")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.28")
 
 
 def main():
@@ -1968,7 +2052,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.23")
+    app.setApplicationVersion("3.2.28")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
