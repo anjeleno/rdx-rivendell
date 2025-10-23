@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.3.4 (2025-10-23)
+### Fixed
+- Hotfix: Resolved `NameError: name 'self' is not defined` during startup. A mis-indented status bar line ended up at class scope instead of inside `setup_ui()`. The line is now correctly indented so class creation no longer executes instance code.
+
+### Packaging
+- Rebuilt `.deb` as 3.3.4 to propagate the fix immediately.
+
 ## v3.3.3 (2025-10-23)
 ### Added
 - Service Control: JACK Settings dialog. Configure backend (ALSA/Dummy), device, sample rate, frames/period, periods/buffer, realtime flag, and extra args. Settings are saved to `~/.config/rdx/jack_settings.json`.
