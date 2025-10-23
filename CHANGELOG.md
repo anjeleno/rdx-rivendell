@@ -1,5 +1,24 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.3.2 (2025-10-23)
+### Added
+- JACK Patchboard: per-port manual patching controls. Select any specific output port and connect it to any input port, independently of L/R stereo pairing.
+
+### Improved
+- JACK routing UX: better L/R detection and ordering; recognizes more Stereo Tool client names (stereo_tool, stereotool, Stereo Tool). Clearer error feedback and an "already connected" tolerance.
+- Emergency Disconnect uses safer checks when tearing down non-critical connections.
+- Auto-Connect heuristics tuned to find ST and Liquidsoap more reliably.
+
+### Build/Release Safety
+- Packaging-time indentation guard broadened: any mis-indented method body lines in main UI classes are auto-normalized before packaging; build fails if still invalid.
+- Pre-copy source compile check added (non-destructive). Optional flags:
+  - RDX_FAIL_ON_SOURCE_SYNTAX=1 to hard-fail on source syntax errors
+  - RDX_FIX_SOURCE=1 to opt-in source normalization with backup
+- Atomic releases: new publisher supports --from-changelog to include only the relevant version section as notes.
+
+### Notes
+- This release focuses on JACK patching control and preventing future startup breaks due to indentation drift. Larger visual graphing (drag/drop) is on the roadmap.
+
 ## v3.3.1 (2025-10-23)
 ### Fixed
 - Startup crash on fresh installs: corrected mis-indentation in `RDXBroadcastControlCenter.__init__` and a stray out-dented status bar line inside `setup_ui()`, which triggered `IndentationError: unexpected indent` on launch.
