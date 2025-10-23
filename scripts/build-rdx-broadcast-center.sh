@@ -40,7 +40,7 @@ chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py"
 
 # Sanity-check and normalize indentation if needed (prevents stray IndentationError)
 echo "🧪 Sanity-checking Python script syntax..."
-python3 - <<'PY'
+python3 - <<PY
 import sys, re
 from pathlib import Path
 

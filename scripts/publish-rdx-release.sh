@@ -3,9 +3,10 @@ set -euo pipefail
 
 # Publish a GitHub Release for the RDX Broadcast Control Center with attached .deb asset in a single step.
 # Usage:
-#   scripts/publish-rdx-release.sh <tag> [--notes-file FILE]
-# Example:
+#   scripts/publish-rdx-release.sh <tag> [--notes-file FILE | --from-changelog]
+# Examples:
 #   scripts/publish-rdx-release.sh v3.3.1 --notes-file CHANGELOG.md
+#   scripts/publish-rdx-release.sh v3.3.1 --from-changelog   # extracts only the v3.3.1 section
 #
 # Requires: gh CLI authenticated (gh auth login)
 
@@ -17,9 +18,13 @@ fi
 shift || true
 
 NOTES_ARGS=( )
+FROM_CHANGELOG=false
 if [[ ${1:-} == "--notes-file" && -n ${2:-} ]]; then
   NOTES_ARGS=( --notes-file "$2" )
   shift 2 || true
+elif [[ ${1:-} == "--from-changelog" ]]; then
+  FROM_CHANGELOG=true
+  shift 1 || true
 else
   # Fallback minimal notes if not provided
   NOTES_ARGS=( --notes "RDX Broadcast Control Center ${TAG}" )
@@ -40,8 +45,16 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 fi
 
 echo "Creating release $TAG with asset $ASSET..."
-# Single-step create with asset attached to avoid 'notes-only' releases
-gh release create "$TAG" "$ASSET" --title "$TAG" "${NOTES_ARGS[@]}"
+if $FROM_CHANGELOG; then
+  # Extract only the section for this tag and use it as notes
+  NOTES_TMP=$(mktemp)
+  python3 scripts/extract-changelog-section.py "$TAG" CHANGELOG.md > "$NOTES_TMP"
+  gh release create "$TAG" "$ASSET" --title "$TAG" --notes-file "$NOTES_TMP"
+  rm -f "$NOTES_TMP"
+else
+  # Single-step create with asset attached
+  gh release create "$TAG" "$ASSET" --title "$TAG" "${NOTES_ARGS[@]}"
+fi
 
 # Verify asset presence
 ASSET_COUNT=$(gh release view "$TAG" --json assets -q '.assets | length')
