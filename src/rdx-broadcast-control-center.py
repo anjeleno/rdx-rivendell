@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.25
+RDX Professional Broadcast Control Center v3.2.26
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -75,20 +75,20 @@ class StreamBuilderTab(QWidget):
         layout.addWidget(self.streams_table)
 
         # Actions (Generate/Apply)
-    actions_row = QHBoxLayout()
-    gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
-    gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
-    gen_btn.setMinimumHeight(40)
-    gen_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    gen_btn.clicked.connect(self.generate_liquidsoap_config)
-    actions_row.addWidget(gen_btn)
+        actions_row = QHBoxLayout()
+        gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
+        gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
+        gen_btn.setMinimumHeight(40)
+        gen_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        gen_btn.clicked.connect(self.generate_liquidsoap_config)
+        actions_row.addWidget(gen_btn)
 
-    apply_btn = QPushButton("📡 Apply to Icecast")
-    apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
-    apply_btn.setMinimumHeight(40)
-    apply_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    apply_btn.clicked.connect(self.apply_to_icecast)
-    actions_row.addWidget(apply_btn)
+        apply_btn = QPushButton("📡 Apply to Icecast")
+        apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+        apply_btn.setMinimumHeight(40)
+        apply_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        apply_btn.clicked.connect(self.apply_to_icecast)
+        actions_row.addWidget(apply_btn)
 
         actions_row.addStretch(1)
         layout.addLayout(actions_row)

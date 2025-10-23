@@ -1,5 +1,10 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.26 (2025-10-22)
+### Fixed
+- Hotfix: Resolved `IndentationError: unexpected indent` in Stream Builder actions block inside `setup_ui()`
+- Affected v3.2.25 on some systems due to a mis-indented line; corrected and rebuilt
+
 ## v3.2.25 (2025-10-22)
 ### Improved
 - Stream Builder: action buttons now match Icecast Management button sizing (consistent min height and expanding width)
