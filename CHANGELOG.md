@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.3.1 (2025-10-23)
+### Fixed
+- Startup crash on fresh installs: corrected mis-indentation in `RDXBroadcastControlCenter.__init__` and a stray out-dented status bar line inside `setup_ui()`, which triggered `IndentationError: unexpected indent` on launch.
+
+### Packaging
+- Bumped builder to 3.3.1 and rebuilt the `.deb` so the fix is propagated. Update using the new package to permanently resolve the error.
+
 ## v3.3.0 (2025-10-23)
 ### Added
 - JACK Patchboard: Replaced the old grid matrix with a simple, stereo-aware patchboard. Pick a Source (stereo out) and Destination (stereo in), then Connect L/R or Disconnect. Includes a quick “Unprotect current” action.

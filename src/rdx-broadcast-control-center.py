@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.3.0
+RDX Professional Broadcast Control Center v3.3.1
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -2873,14 +2873,14 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-    self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.0")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.1")
         self.setMinimumSize(1000, 700)
-    # Tray/minimize settings
-    self.tray_minimize_on_close = False
-    self._settings = {}
-    self._load_settings()
-    self.setup_ui()
-    self._setup_tray()
+        # Tray/minimize settings
+        self.tray_minimize_on_close = False
+        self._settings = {}
+        self._load_settings()
+        self.setup_ui()
+        self._setup_tray()
         
     def setup_ui(self):
         """Setup the main user interface"""
@@ -2933,7 +2933,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.0")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.1")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -3015,7 +3015,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.3.0")
+    app.setApplicationVersion("3.3.1")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
