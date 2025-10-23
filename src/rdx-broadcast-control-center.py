@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.26
+RDX Professional Broadcast Control Center v3.2.27
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1621,6 +1621,7 @@ class ServiceControlTab(QWidget):
             from PyQt5.QtCore import QProcess
 
             options = [
+                "Build via OPAM (PPA-free)",
                 "Install from current repos",
                 "Add official Liquidsoap repo + install",
                 "Add vendor repo (Paravel) + install",
@@ -1632,7 +1633,9 @@ class ServiceControlTab(QWidget):
             if not ok or choice == "Cancel":
                 return False
             mode = "current"
-            if choice.startswith("Add official"):
+            if choice.startswith("Build via OPAM"):
+                mode = "opam"
+            elif choice.startswith("Add official"):
                 mode = "official"
             elif choice.startswith("Add vendor"):
                 mode = "vendor"
@@ -1650,8 +1653,15 @@ class ServiceControlTab(QWidget):
             # Start process with pkexec /bin/bash installer
             installer = "/usr/share/rdx/install-liquidsoap-plugin.sh"
             proc = QProcess(dlg)
-            proc.setProgram("pkexec")
-            proc.setArguments(["/bin/bash", installer, mode])
+            if mode == "opam":
+                # Use dedicated OPAM installer which handles root+user phases
+                installer = "/usr/share/rdx/install-liquidsoap-opam.sh"
+                dlg.setWindowTitle("Building Liquidsoap via OPAM… (PPA-free)")
+                proc.setProgram("pkexec")
+                proc.setArguments(["/bin/bash", installer])
+            else:
+                proc.setProgram("pkexec")
+                proc.setArguments(["/bin/bash", installer, mode])
             proc.setProcessChannelMode(QProcess.MergedChannels)
 
             def append_output():
@@ -1671,15 +1681,59 @@ class ServiceControlTab(QWidget):
             dlg.exec_()
 
             exit_code = finished_ok["code"] if finished_ok["code"] is not None else 1
-            if exit_code != 0:
-                tail = "\n".join(log_view.toPlainText().splitlines()[-50:])
-                QMessageBox.critical(self, "Install Failed",
-                                     f"Failed to install FFmpeg plugin (exit {exit_code}).\n\nLast output:\n{tail}\n\n"
-                                     "Tip: Ensure a PolicyKit authentication agent is running.")
-                return False
+            if exit_code != 0 and mode != "opam":
+                # Attempt a fallback search/install directly from current repos and disable broken PPA entries
+                log_view.append("\n--- Fallback: trying alternative install from current repos ---\n")
+                alt_script = r"""#!/usr/bin/env bash
+set -euo pipefail
+log(){ echo "[rdx-alt] $*"; }
+disable_savonet(){ for f in /etc/apt/sources.list.d/*savonet* 2>/dev/null; do [ -f "$f" ] || continue; log "Disabling $f"; sed -i 's/^deb /# disabled by rdx: deb /' "$f" || true; sed -i 's/^deb-src /# disabled by rdx: deb-src /' "$f" || true; mv "$f" "$f.disabled" 2>/dev/null || true; done; }
+enable_repos(){ if command -v add-apt-repository >/dev/null 2>&1; then add-apt-repository -y universe || true; add-apt-repository -y multiverse || true; fi }
+try_install(){ local p; for p in "$@"; do if apt-get -s install "$p" >/dev/null 2>&1; then log "Installing $p"; DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$p" && return 0; fi; done; return 1; }
+verify(){ liquidsoap -h encoder.ffmpeg >/dev/null 2>&1 && exit 0 || exit 2; }
+disable_savonet || true
+enable_repos || true
+apt-get update || true
+base=(liquidsoap-plugin-ffmpeg liquidsoap-plugin-all liquidsoap-plugin-extra liquidsoap-plugins-extra liquidsoap-plugins liquidsoap-plugin-fdkaac)
+dyn=$(apt-cache search -n '^liquidsoap.*(plugin|plugins).*' 2>/dev/null | awk '{print $1}' | grep -E 'ffmpeg|extra|all|fdkaac' | sort -u || true)
+pkgs=("${base[@]}")
+for n in $dyn; do pkgs+=("$n"); done
+try_install "${pkgs[@]}" || true
+verify
+"""
+                # Write and run fallback script
+                import tempfile
+                alt_path = Path(tempfile.gettempdir()) / "rdx-alt-install.sh"
+                try:
+                    alt_path.write_text(alt_script, encoding="utf-8")
+                    alt_path.chmod(0o755)
+                except Exception as werr:
+                    log_view.append(f"Could not write fallback script: {werr}")
+                proc2 = QProcess(dlg)
+                proc2.setProgram("pkexec")
+                proc2.setArguments(["/bin/bash", str(alt_path)])
+                proc2.setProcessChannelMode(QProcess.MergedChannels)
+                proc2.readyRead.connect(lambda: log_view.append(proc2.readAll().data().decode(errors="replace").rstrip()))
+                fin = {"code": None}
+                proc2.finished.connect(lambda code, status: (fin.update({"code": int(code)}), dlg.accept()))
+                # Reuse dialog to show fallback progress
+                dlg.setWindowTitle("Installing FFmpeg Plugin… (Fallback)")
+                proc2.start()
+                dlg.exec_()
+                fcode = fin["code"] if fin["code"] is not None else 1
+                if fcode != 0:
+                    tail = "\n".join(log_view.toPlainText().splitlines()[-80:])
+                    QMessageBox.critical(self, "Install Failed",
+                                         f"FFmpeg plugin installation failed (exit {exit_code}), fallback also failed (exit {fcode}).\n\nLast output:\n{tail}\n\n"
+                                         "Options: Use MP3 only for now, or install Liquidsoap via OPAM for full AAC.")
+                    return False
 
-            QMessageBox.information(self, "Install Complete",
-                                    "FFmpeg plugin installation attempted. Rechecking availability…")
+            if mode == "opam":
+                QMessageBox.information(self, "OPAM Install Complete",
+                                        "Liquidsoap was built via OPAM. If this is your first OPAM install, you may need to restart RDX for PATH to refresh.\n\nRechecking availability…")
+            else:
+                QMessageBox.information(self, "Install Complete",
+                                        "FFmpeg plugin installation attempted. Rechecking availability…")
             return True
         except Exception as e:
             QMessageBox.critical(self, "Install Error", f"Error during installation: {e}")

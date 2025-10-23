@@ -1,5 +1,17 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.27 (2025-10-22)
+### Added
+- In-app installer now offers a PPA-free option: "Build via OPAM" which compiles Liquidsoap per-user with AAC/FFmpeg support
+- Live progress dialog for OPAM build; creates a user shim at `~/.local/bin/liquidsoap` so RDX can find the binary immediately
+
+### Improved
+- Fallback behavior: OPAM path bypasses broken PPA situations on jammy/noble and avoids adding focal sources
+
+### Packaging
+- Package now includes `/usr/share/rdx/install-liquidsoap-opam.sh`
+- Builder bumped to 3.2.27
+
 ## v3.2.26 (2025-10-22)
 ### Fixed
 - Hotfix: Resolved `IndentationError: unexpected indent` in Stream Builder actions block inside `setup_ui()`
