@@ -38,6 +38,76 @@ echo "📋 Installing main application..."
 cp "$RDX_ROOT/src/rdx-broadcast-control-center.py" "$PACKAGE_DIR/usr/local/bin/"
 chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py"
 
+# Sanity-check and normalize indentation if needed (prevents stray IndentationError)
+echo "🧪 Sanity-checking Python script syntax..."
+python3 - <<'PY'
+import sys, re
+from pathlib import Path
+
+path = Path("$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py")
+code = path.read_text(encoding='utf-8')
+
+def try_compile(txt):
+    try:
+        compile(txt, str(path), 'exec')
+        return True
+    except Exception as e:
+        print(f"   ⛔ Compile check failed: {e}")
+        return False
+
+def normalize(txt):
+    lines = txt.splitlines()
+    out = []
+    inside_class = False
+    inside_init = False
+    init_indent = None
+    for i, line in enumerate(lines):
+        if line.startswith('class RDXBroadcastControlCenter('):
+            inside_class = True
+        elif inside_class and line.startswith('class '):
+            inside_class = False
+
+        if inside_class and line.lstrip().startswith('def __init__('):
+            inside_init = True
+            init_indent = len(line) - len(line.lstrip(' '))
+            out.append(line)
+            continue
+
+        if inside_init:
+            # End of __init__ when a new def appears at the same class level
+            if re.match(r'^\s{%d}def\s' % init_indent, line):
+                inside_init = False
+                out.append(line)
+                continue
+            stripped = line.lstrip(' ')
+            lead = len(line) - len(stripped)
+            # Common simple body: method calls and assignments
+            if stripped.startswith(('self.', 'super().__init__', '#', 'pass')):
+                desired = init_indent + 4
+                if lead != desired:
+                    line = ' ' * desired + stripped
+        out.append(line)
+
+    fixed = '\n'.join(out)
+    # Also ensure status bar call is properly indented inside setup_ui
+    fixed = re.sub(r'(?m)^(\s{0,4})(self\.statusBar\(\)\.showMessage\(.*\))$', r'        \2', fixed)
+    return fixed
+
+if try_compile(code):
+    print("   ✅ Syntax OK")
+    sys.exit(0)
+
+print("   🔧 Applying indentation normalization...")
+fixed = normalize(code)
+path.write_text(fixed, encoding='utf-8')
+if try_compile(fixed):
+    print("   ✅ Fixed and valid")
+    sys.exit(0)
+else:
+    print("   ❌ Still invalid after normalization; aborting build.")
+    sys.exit(1)
+PY
+
 # Copy desktop entries
 echo "🖥️ Installing desktop integration..."
 cp "$RDX_ROOT/rdx-broadcast-control-center.desktop" "$PACKAGE_DIR/usr/share/applications/"
