@@ -14,7 +14,7 @@ need_root_pkgs=(
   opam bubblewrap build-essential m4 pkg-config git curl unzip rsync
   libpcre3-dev libtag1-dev libmad0-dev libfaad-dev libfdk-aac-dev
   libasound2-dev libpulse-dev libjack-jackd2-dev
-  libavcodec-dev libavformat-dev libavutil-dev libswresample-dev
+  libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev libavfilter-dev
   libssl-dev zlib1g-dev libflac-dev libogg-dev libvorbis-dev libopus-dev libmp3lame-dev libsamplerate0-dev libsoxr-dev
 )
 
@@ -123,6 +123,17 @@ EOF
       else
         log "FDK-AAC encoder detected after rebuild."
       fi
+    fi
+  fi
+
+  # Optional: if FFmpeg encoder still not detected, attempt a one-time rebuild to link against dev libs
+  if ! "${liq_bin}" -h encoder.ffmpeg >/dev/null 2>&1; then
+    warn "FFmpeg encoder not detected. Attempting opam reinstall of liquidsoap to link against FFmpeg dev libs…"
+    OPAMYES=1 opam reinstall -y liquidsoap || warn "opam reinstall liquidsoap failed; continuing with current build"
+    if ! "${liq_bin}" -h encoder.ffmpeg >/dev/null 2>&1; then
+      warn "FFmpeg encoder still not detected after rebuild. AAC via FFmpeg may be unavailable."
+    else
+      log "FFmpeg encoder detected after rebuild."
     fi
   fi
 

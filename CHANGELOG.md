@@ -1,5 +1,17 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.30 (2025-10-23)
+### Fixed
+- FLAC streaming to Icecast now uses an Ogg container: `%ogg(%flac())` to prevent runtime failures.
+
+### Improved
+- Launcher PATH hardening: prepend `~/.local/bin` so the OPAM Liquidsoap shim is preferred by GUI launches.
+- OPAM installer adds FFmpeg dev libs (`libswscale-dev`, `libavfilter-dev`) and performs a one-time rebuild if the FFmpeg encoder is still missing.
+- Encoder detection continues to be capability-based and OPAM-aware; AAC prompts remain gated strictly to AAC configs.
+
+### Packaging
+- Builder updated to 3.2.30; rebuilt `.deb` with the above fixes.
+
 ## v3.2.29 (2025-10-23)
 ### Fixed
 - UI Hotfix: Corrected remaining indentation in the Stream Builder actions row and main window setup that could crash on launch (IndentationError).

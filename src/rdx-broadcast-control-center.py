@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.29
+RDX Professional Broadcast Control Center v3.2.30
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -330,8 +330,8 @@ output.icecast(
             # Fallback: ffmpeg-based AAC (audio-only flags for Liquidsoap 2.x)
             return f"%ffmpeg(audio=true, video=false, format=\"adts\", audio_codec=\"aac\", audio_bitrate=\"{kbps_int}k\")"
         elif codec == "FLAC":
-            quality = bitrate.split()[1]
-            return f"%flac(compression={quality})"
+            # For Icecast, FLAC is typically sent in an Ogg container
+            return "%ogg(%flac())"
         elif codec == "OGG":
             kbps = bitrate.split()[0]
             return f"%vorbis(quality=0.7)"
@@ -342,15 +342,8 @@ output.icecast(
             return "%mp3(bitrate=192)"
 
     def _has_fdkaac(self) -> bool:
-        """Return True if Liquidsoap fdkaac encoder is available."""
-        try:
-            res = subprocess.run(["liquidsoap", "-h", "encoder.fdkaac"], capture_output=True, text=True)
-            out = (res.stdout or "") + (res.stderr or "")
-            if res.returncode == 0 and "Plugin not found" not in out:
-                return True
-        except Exception:
-            pass
-        return False
+        """Return True if Liquidsoap fdkaac encoder is available (OPAM-aware)."""
+        return self._has_liquidsoap_encoder("fdkaac")
             
     def apply_to_icecast(self):
         """Apply stream configuration to Icecast"""
@@ -2032,7 +2025,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.29")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.30")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -2079,7 +2072,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.29")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.30")
 
 
 def main():
@@ -2087,7 +2080,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.29")
+    app.setApplicationVersion("3.2.30")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

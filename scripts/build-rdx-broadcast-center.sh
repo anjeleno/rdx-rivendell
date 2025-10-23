@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.29"
+PACKAGE_VERSION="3.2.30"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -115,6 +115,9 @@ cd "$HOME" 2>/dev/null || cd /tmp
 
 # Launch with error capture
 log_error "Starting RDX Broadcast Control Center"
+
+# Ensure OPAM shim is preferred when present
+export PATH="$HOME/.local/bin:$PATH"
 
 # Log Python runtime and app script version header for diagnostics
 PY_VER=$(python3 -c 'import sys; print(sys.version.replace("\n"," "))' 2>/dev/null)
