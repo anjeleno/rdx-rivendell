@@ -76,7 +76,7 @@ class StreamBuilderTab(QWidget):
 
         # Actions (Generate/Apply)
         actions_row = QHBoxLayout()
-    gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
+        gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
         gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
         gen_btn.setMinimumHeight(40)
         gen_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -1997,7 +1997,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.28")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.28")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -2044,7 +2044,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.28")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.28")
 
 
 def main():
