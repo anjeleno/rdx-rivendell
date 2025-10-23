@@ -2032,7 +2032,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.29")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.29")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
