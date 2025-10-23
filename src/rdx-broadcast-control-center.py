@@ -973,7 +973,7 @@ class JackMatrixTab(QWidget):
 
         layout.addWidget(status_group)
 
-        # Patchboard Section
+        # Patchboard Section (Stereo)
         patch_group = QGroupBox("🎚️ Patchboard (Stereo)")
         patch_layout = QGridLayout(patch_group)
 
@@ -1006,6 +1006,28 @@ class JackMatrixTab(QWidget):
         patch_layout.addWidget(actions_w, 1, 2)
 
         layout.addWidget(patch_group)
+
+        # Fine-grained manual patching (single ports)
+        fine_group = QGroupBox("🔧 Manual Patching (Per-Port)")
+        fine_grid = QGridLayout(fine_group)
+        fine_grid.addWidget(QLabel("Source Port (output)"), 0, 0)
+        fine_grid.addWidget(QLabel("Destination Port (input)"), 0, 1)
+        self.port_src_combo = QComboBox()
+        self.port_dst_combo = QComboBox()
+        fine_grid.addWidget(self.port_src_combo, 1, 0)
+        fine_grid.addWidget(self.port_dst_combo, 1, 1)
+        fine_actions = QWidget()
+        fine_actions_h = QHBoxLayout(fine_actions)
+        fine_actions_h.setContentsMargins(0,0,0,0)
+        btn_p_connect = QPushButton("Connect")
+        btn_p_connect.clicked.connect(self.connect_manual_ports)
+        btn_p_disconnect = QPushButton("Disconnect")
+        btn_p_disconnect.clicked.connect(self.disconnect_manual_ports)
+        fine_actions_h.addWidget(btn_p_connect)
+        fine_actions_h.addWidget(btn_p_disconnect)
+        fine_actions_h.addStretch(1)
+        fine_grid.addWidget(fine_actions, 1, 2)
+        layout.addWidget(fine_group)
 
         # Info on detected ports
         info_group = QGroupBox("📊 Detected JACK clients and ports")
@@ -1059,6 +1081,7 @@ class JackMatrixTab(QWidget):
             self.jack_clients = sorted(list(self.ports.keys()))
             # Populate combos
             self._populate_combos()
+            self._populate_port_combos()
             # Info text
             self._update_info()
             self.jack_status_label.setText("Status: ✅ JACK Running")
@@ -1135,6 +1158,43 @@ class JackMatrixTab(QWidget):
         if cur_d in dsts:
             self.dest_combo.setCurrentText(cur_d)
 
+    def _populate_port_combos(self):
+        # Flat lists of full port names
+        outs = []
+        ins = []
+        for c, d in self.ports.items():
+            outs.extend(d.get("out", []))
+            ins.extend(d.get("in", []))
+        # Sort for readability by client then port
+        def keyp(p: str):
+            client, pn = p.split(":", 1)
+            return (client.lower(), pn.lower())
+        outs.sort(key=keyp)
+        ins.sort(key=keyp)
+        # Build nice labels
+        def label(p: str) -> str:
+            client, pn = p.split(":", 1)
+            pretty_c = self._pretty_client(client)
+            pretty_p = self._pretty_port_name(pn)
+            return f"{pretty_c}: {pretty_p}  ({pn})"
+        cur_sp = self.port_src_combo.currentData() if self.port_src_combo.count() else None
+        cur_dp = self.port_dst_combo.currentData() if self.port_dst_combo.count() else None
+        self.port_src_combo.clear()
+        for p in outs:
+            self.port_src_combo.addItem(label(p), p)
+        self.port_dst_combo.clear()
+        for p in ins:
+            self.port_dst_combo.addItem(label(p), p)
+        # Try restore previous selection
+        if cur_sp:
+            idx = self.port_src_combo.findData(cur_sp)
+            if idx >= 0:
+                self.port_src_combo.setCurrentIndex(idx)
+        if cur_dp:
+            idx = self.port_dst_combo.findData(cur_dp)
+            if idx >= 0:
+                self.port_dst_combo.setCurrentIndex(idx)
+
     def _update_info(self):
         lines = []
         for c in self.jack_clients:
@@ -1146,11 +1206,18 @@ class JackMatrixTab(QWidget):
     def _stereo_pair(self, client: str, direction: str) -> list:
         """Return first two ports for client in given direction (in/out)."""
         ports = list(self.ports.get(client, {}).get(direction, []))
-        # Sort to ensure 1,2 ordering when named with numbers
+        # Sort to ensure L/R or 1/2 ordering
         def sort_key(p: str):
-            pn = p.split(":", 1)[1]
+            pn = p.split(":", 1)[1].lower()
+            # Prefer left before right if labeled
+            if re.search(r"(^|[_\-:])l(eft)?($|[_\-:])", pn):
+                return (-2, pn)
+            if re.search(r"(^|[_\-:])r(ight)?($|[_\-:])", pn):
+                return (-1, pn)
             m = re.search(r"(\d+)$", pn)
-            return int(m.group(1)) if m else 0
+            if m:
+                return (int(m.group(1)), pn)
+            return (999, pn)
         ports.sort(key=sort_key)
         return ports[:2]
 
@@ -1173,8 +1240,8 @@ class JackMatrixTab(QWidget):
         errs = []
         for sp, dp in zip(s_ports, d_ports):
             try:
-                subprocess.run(["jack_connect", sp, dp], check=True, capture_output=True, text=True)
-            except subprocess.CalledProcessError as e:
+                self._jack_connect(sp, dp)
+            except Exception as e:
                 ok = False
                 errs.append(f"{sp} -> {dp}: {e}")
         if ok:
@@ -1198,7 +1265,7 @@ class JackMatrixTab(QWidget):
         errs = []
         for sp, dp in zip(s_ports, d_ports):
             try:
-                subprocess.run(["jack_disconnect", sp, dp], check=False, capture_output=True, text=True)
+                self._jack_disconnect(sp, dp)
             except Exception as e:
                 errs.append(f"{sp} -/-> {dp}: {e}")
         if errs:
@@ -1231,7 +1298,7 @@ class JackMatrixTab(QWidget):
                         return c
             return None
         rd = find_like(["rivendell", "rd"], "out") or find_like(["system"], "out")
-        st = find_like(["stereo tool", "stereotool", "thimeo"], "in")
+        st = find_like(["stereo tool", "stereotool", "stereo_tool", "thimeo"], "in")
         ls_in = find_like(["liquidsoap"], "in")
         ls_out = find_like(["liquidsoap"], "out")
         sys_play = find_like(["system"], "in")
@@ -1286,7 +1353,7 @@ class JackMatrixTab(QWidget):
             errs = []
             for sp, dp in to_disc:
                 try:
-                    subprocess.run(["jack_disconnect", sp, dp], check=False, capture_output=True, text=True)
+                    self._jack_disconnect(sp, dp)
                 except Exception as e:
                     errs.append(f"{sp} -/-> {dp}: {e}")
             if errs:
@@ -1327,6 +1394,94 @@ class JackMatrixTab(QWidget):
                 json.dump({"pairs": sorted(list(self.critical_pairs))}, f, indent=2)
         except Exception:
             pass
+
+    # ---- Low-level JACK ops with better errors ----
+    def _jack_connect(self, src_port: str, dst_port: str):
+        try:
+            res = subprocess.run(["jack_connect", src_port, dst_port], capture_output=True, text=True)
+            if res.returncode != 0:
+                # If already connected, treat as success
+                if self._is_connected(src_port, dst_port):
+                    return
+                stderr = (res.stderr or '').strip()
+                stdout = (res.stdout or '').strip()
+                raise RuntimeError(stderr or stdout or f"jack_connect failed with code {res.returncode}")
+        except FileNotFoundError:
+            raise RuntimeError("jack_connect not found in PATH")
+
+    def _jack_disconnect(self, src_port: str, dst_port: str):
+        try:
+            subprocess.run(["jack_disconnect", src_port, dst_port], capture_output=True, text=True)
+        except FileNotFoundError:
+            raise RuntimeError("jack_disconnect not found in PATH")
+
+    def _is_connected(self, src_port: str, dst_port: str) -> bool:
+        try:
+            res = subprocess.run(["jack_lsp", "-c"], capture_output=True, text=True)
+            txt = res.stdout or ""
+            cur = None
+            for line in txt.splitlines():
+                if not line:
+                    continue
+                if not line.startswith(" "):
+                    cur = line.strip()
+                    continue
+                if cur == src_port and line.startswith("    "):
+                    if line.strip() == dst_port:
+                        return True
+        except Exception:
+            pass
+        return False
+
+    # ---- Manual per-port connect/disconnect ----
+    def connect_manual_ports(self):
+        sp = self.port_src_combo.currentData()
+        dp = self.port_dst_combo.currentData()
+        if not sp or not dp:
+            QMessageBox.warning(self, "Invalid Selection", "Select a source output port and a destination input port.")
+            return
+        try:
+            self._jack_connect(sp, dp)
+            QMessageBox.information(self, "Connected", f"{sp} → {dp}")
+        except Exception as e:
+            QMessageBox.warning(self, "Connect Failed", f"{sp} -> {dp}: {e}")
+
+    def disconnect_manual_ports(self):
+        sp = self.port_src_combo.currentData()
+        dp = self.port_dst_combo.currentData()
+        if not sp or not dp:
+            return
+        try:
+            self._jack_disconnect(sp, dp)
+            QMessageBox.information(self, "Disconnected", f"{sp} ⛓️ {dp}")
+        except Exception as e:
+            QMessageBox.warning(self, "Disconnect Failed", f"{sp} -/-> {dp}: {e}")
+
+    # ---- Pretty naming helpers ----
+    def _pretty_client(self, name: str) -> str:
+        ln = name.lower()
+        if ln.startswith('system'):
+            return 'System'
+        if 'rivendell' in ln or ln.startswith('rd'):
+            return 'Rivendell'
+        if 'liquidsoap' in ln:
+            return 'Liquidsoap'
+        if 'stereo_tool' in ln or 'stereotool' in ln or 'stereo tool' in ln:
+            return 'Stereo Tool'
+        return name
+
+    def _pretty_port_name(self, pn: str) -> str:
+        lpn = pn.lower()
+        # Common JACK port namings
+        if lpn in ("in_1", "capture_1", "playout_0l", "left", "l", "in_l", "in:left"):
+            return "Left In"
+        if lpn in ("in_2", "capture_2", "playout_0r", "right", "r", "in_r", "in:right"):
+            return "Right In"
+        if lpn in ("out_1", "playback_1", "out_l", "left", "l", "out:left"):
+            return "Left Out"
+        if lpn in ("out_2", "playback_2", "out_r", "right", "r", "out:right"):
+            return "Right Out"
+        return pn
 
 
 class ServiceControlTab(QWidget):
@@ -2873,7 +3028,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-    self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.1")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.1")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -2933,7 +3088,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.1")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.1")
 
     # ---- System tray ----
     def _setup_tray(self):

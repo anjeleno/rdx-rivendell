@@ -33,6 +33,23 @@ mkdir -p "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME"
 mkdir -p "$PACKAGE_DIR/etc/systemd/system"
 mkdir -p "$PACKAGE_DIR/etc/skel/.config/rdx"
 
+# Pre-copy source sanity check (non-destructive)
+echo "🧪 Pre-checking source syntax..."
+if ! python3 -m py_compile "$RDX_ROOT/src/rdx-broadcast-control-center.py" >/dev/null 2>&1; then
+    echo "⚠️  Source compile failed. Will rely on packaging-time normalization."
+    if [ "${RDX_FAIL_ON_SOURCE_SYNTAX:-0}" = "1" ]; then
+        echo "❌ RDX_FAIL_ON_SOURCE_SYNTAX=1 set; aborting build due to source syntax error." >&2
+        python3 -m py_compile "$RDX_ROOT/src/rdx-broadcast-control-center.py"  # show error
+        exit 1
+    fi
+    if [ "${RDX_FIX_SOURCE:-0}" = "1" ]; then
+        echo "🔧 Applying opt-in source normalization (RDX_FIX_SOURCE=1)..."
+        python3 "$RDX_ROOT/scripts/fix-rdx-app-indentation.py" --file "$RDX_ROOT/src/rdx-broadcast-control-center.py" --write --backup || true
+        # Re-check after normalization
+        python3 -m py_compile "$RDX_ROOT/src/rdx-broadcast-control-center.py" || true
+    fi
+fi
+
 # Copy main application
 echo "📋 Installing main application..."
 cp "$RDX_ROOT/src/rdx-broadcast-control-center.py" "$PACKAGE_DIR/usr/local/bin/"
@@ -58,38 +75,64 @@ def try_compile(txt):
 def normalize(txt):
     lines = txt.splitlines()
     out = []
-    inside_class = False
-    inside_init = False
-    init_indent = None
-    for i, line in enumerate(lines):
-        if line.startswith('class RDXBroadcastControlCenter('):
-            inside_class = True
-        elif inside_class and line.startswith('class '):
-            inside_class = False
+    cls_stack = []
+    in_method = False
+    method_indent = None
+    target_classes = {
+        'RDXBroadcastControlCenter',
+        'JackMatrixTab',
+        'StereoToolManagerTab',
+        'ServiceControlTab',
+        'SettingsTab'
+    }
 
-        if inside_class and line.lstrip().startswith('def __init__('):
-            inside_init = True
-            init_indent = len(line) - len(line.lstrip(' '))
+    def current_class():
+        return cls_stack[-1] if cls_stack else None
+
+    for i, line in enumerate(lines):
+        stripped = line.lstrip(' ')
+        lead = len(line) - len(stripped)
+
+        # Track class begin/end
+        m_cls = re.match(r'^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(', line)
+        if m_cls:
+            cls_stack.append(m_cls.group(1))
+            in_method = False
+            method_indent = None
+            out.append(line)
+            continue
+        if current_class() and line.startswith('class '):
+            # New class begins; close previous implicitly
+            cls_stack = [re.match(r'^class\s+([A-Za-z_][A-Za-z0-9_]*)', line).group(1)]
+            in_method = False
+            method_indent = None
             out.append(line)
             continue
 
-        if inside_init:
-            # End of __init__ when a new def appears at the same class level
-            if re.match(r'^\s{%d}def\s' % init_indent, line):
-                inside_init = False
-                out.append(line)
-                continue
-            stripped = line.lstrip(' ')
-            lead = len(line) - len(stripped)
-            # Common simple body: method calls and assignments
-            if stripped.startswith(('self.', 'super().__init__', '#', 'pass')):
-                desired = init_indent + 4
-                if lead != desired:
+        # Detect method definitions inside target classes
+        if current_class() in target_classes and re.match(r'^\s*def\s+[A-Za-z_][A-Za-z0-9_]*\s*\(', line):
+            in_method = True
+            method_indent = lead
+            out.append(line)
+            continue
+
+        # Leaving a method when dedented to class level or empty line after class
+        if in_method and lead <= (method_indent or 0) and stripped and not stripped.startswith('#') and not stripped.startswith('def '):
+            in_method = False
+            method_indent = None
+
+        if in_method and current_class() in target_classes:
+            # Ensure body lines have at least method_indent + 4 spaces
+            desired = (method_indent or 0) + 4
+            # Only adjust for common simple statements to avoid harming blocks
+            if stripped and not stripped.startswith(('def ', 'class ')):
+                if lead < desired:
                     line = ' ' * desired + stripped
+
         out.append(line)
 
     fixed = '\n'.join(out)
-    # Also ensure status bar call is properly indented inside setup_ui
+    # Also specifically ensure status bar calls are indented like a normal body line
     fixed = re.sub(r'(?m)^(\s{0,4})(self\.statusBar\(\)\.showMessage\(.*\))$', r'        \2', fixed)
     return fixed
 
@@ -97,7 +140,7 @@ if try_compile(code):
     print("   ✅ Syntax OK")
     sys.exit(0)
 
-print("   🔧 Applying indentation normalization...")
+print("   🔧 Applying indentation normalization (wider scope)...")
 fixed = normalize(code)
 path.write_text(fixed, encoding='utf-8')
 if try_compile(fixed):
