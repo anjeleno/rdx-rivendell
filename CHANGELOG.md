@@ -1,5 +1,19 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.3.3 (2025-10-23)
+### Added
+- Service Control: JACK Settings dialog. Configure backend (ALSA/Dummy), device, sample rate, frames/period, periods/buffer, realtime flag, and extra args. Settings are saved to `~/.config/rdx/jack_settings.json`.
+- JACK management toggle: Choose whether RDX should manage the JACK server. When disabled, RDX won’t start/stop JACK and disables those buttons to avoid conflicts with Rivendell/QJackCtl.
+
+### Improved
+- Non-blocking status probes: All periodic checks for `jack_lsp`, `pgrep liquidsoap`, and `systemctl is-active` use short timeouts to prevent UI sluggishness if tools hang or respond slowly.
+- Start All respects JACK management: only launches JACK if the RDX management toggle is enabled, then proceeds with Liquidsoap → Stereo Tool → Icecast.
+- Safer JACK start/stop: starts jackd detached with your saved settings; stop also tries `jack_control exit` if available.
+
+### Notes
+- If Rivendell or QJackCtl already manages JACK on your system, keep the RDX JACK management toggle off to avoid double-management.
+- ALSA device dropdown and jackdbus profiles are planned; current release focuses on a safe, minimal manager with solid UX.
+
 ## v3.3.2 (2025-10-23)
 ### Added
 - JACK Patchboard: per-port manual patching controls. Select any specific output port and connect it to any input port, independently of L/R stereo pairing.

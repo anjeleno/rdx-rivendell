@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.3.2
+RDX Professional Broadcast Control Center v3.3.3
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -24,6 +24,7 @@ from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QIcon, QPalette
 import urllib.request
 import shutil
+import shlex
 
 class StreamBuilderTab(QWidget):
     """Tab 1: Stream Builder - Create and manage streaming configurations"""
@@ -1061,7 +1062,12 @@ class JackMatrixTab(QWidget):
         """Refresh JACK ports and update UI elements."""
         try:
             # Check if JACK is running
-            base = subprocess.run(["jack_lsp"], capture_output=True, text=True)
+            try:
+                base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=0.7)
+            except subprocess.TimeoutExpired:
+                self.jack_status_label.setText("Status: ⏳ JACK Probe Timed Out")
+                self.jack_status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                return
             if base.returncode != 0:
                 self.jack_status_label.setText("Status: ❌ JACK Not Running")
                 self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
@@ -1072,7 +1078,10 @@ class JackMatrixTab(QWidget):
                 self.jack_info.setPlainText("JACK is not running. Start JACK and refresh.")
                 return
             # Ports with properties
-            res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True)
+            try:
+                res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True, timeout=0.7)
+            except subprocess.TimeoutExpired:
+                res = subprocess.CompletedProcess(args=["jack_lsp","-p"], returncode=1, stdout=base.stdout, stderr="")
             if res.returncode != 0:
                 out = base.stdout
             else:
@@ -1329,7 +1338,10 @@ class JackMatrixTab(QWidget):
             return
         # Parse current connections and disconnect those not protected
         try:
-            res = subprocess.run(["jack_lsp", "-c"], capture_output=True, text=True)
+            try:
+                res = subprocess.run(["jack_lsp", "-c"], capture_output=True, text=True, timeout=0.7)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError("jack_lsp -c timed out")
             txt = res.stdout or ""
             to_disc = []
             cur_src = None
@@ -1489,6 +1501,8 @@ class ServiceControlTab(QWidget):
     
     def __init__(self):
         super().__init__()
+        # Persisted JACK settings used to start/stop server
+        self.jack_settings = self._load_jack_settings()
         self.services = {
             'jack': {'name': 'JACK Audio', 'systemd': 'jack', 'status': 'unknown', 'user_service': False},
             # Use a per-user unit that points to the currently active Stereo Tool instance
@@ -1543,6 +1557,13 @@ class ServiceControlTab(QWidget):
             config_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; }")
             config_btn.clicked.connect(lambda checked, s=service_key: self.configure_service(s))
             services_layout.addWidget(config_btn, row, 5)
+
+            # Keep references for JACK to enable/disable based on management mode
+            if service_key == 'jack':
+                self.jack_status_label = status_label
+                self.jack_start_btn = start_btn
+                self.jack_stop_btn = stop_btn
+                self.jack_restart_btn = restart_btn
 
             # Stereo Tool extras: Logs button and active status label
             if service_key == 'stereo_tool':
@@ -1647,6 +1668,88 @@ class ServiceControlTab(QWidget):
         # Initial one-time probe for Liquidsoap encoder capabilities
         self._last_liq_probe_ts = 0.0
         self.update_liquidsoap_encoders_label(force=True)
+
+        # Apply initial JACK management state to controls
+        self._apply_jack_manage_mode_to_controls()
+
+    # ---- JACK settings persistence and helpers ---------------------------
+    def _jack_settings_path(self) -> Path:
+        return Path.home() / ".config" / "rdx" / "jack_settings.json"
+
+    def _load_jack_settings(self) -> dict:
+        d = {
+            "manage": True,            # Whether RDX should manage JACK server
+            "backend": "alsa",        # alsa | dummy
+            "device": "",             # e.g., hw:PCH or hw:0
+            "rate": 48000,             # Sample rate
+            "period": 256,             # Frames/period (-p)
+            "nperiods": 2,             # Periods/buffer (-n)
+            "realtime": True,          # Use -R for realtime
+            "extra_args": ""          # Extra args for jackd driver
+        }
+        try:
+            p = self._jack_settings_path()
+            if p.exists():
+                with open(p, 'r') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        d.update(data)
+        except Exception:
+            pass
+        return d
+
+    def _save_jack_settings(self, data: dict):
+        try:
+            p = self._jack_settings_path()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, 'w') as f:
+                json.dump(data, f, indent=2)
+            self.jack_settings = data
+        except Exception:
+            pass
+
+    def _jack_is_running(self) -> bool:
+        try:
+            res = subprocess.run(["jack_lsp"], capture_output=True, timeout=0.7)
+            return res.returncode == 0
+        except Exception:
+            return False
+
+    def _build_jackd_command(self) -> list:
+        s = self.jack_settings
+        cmd = ["jackd"]
+        if s.get("realtime", True):
+            cmd.append("-R")
+        cmd += ["-d", s.get("backend", "alsa")]  # select driver
+        if s.get("backend", "alsa").lower() == "alsa":
+            dev = s.get("device", "").strip()
+            if dev:
+                cmd += ["-d", dev]
+            rate = int(s.get("rate", 48000) or 48000)
+            period = int(s.get("period", 256) or 256)
+            nperiods = int(s.get("nperiods", 2) or 2)
+            cmd += ["-r", str(rate), "-p", str(period), "-n", str(nperiods)]
+        # Simple dummy backend params: sample rate and period
+        if s.get("backend", "alsa").lower() == "dummy":
+            rate = int(s.get("rate", 48000) or 48000)
+            period = int(s.get("period", 256) or 256)
+            nperiods = int(s.get("nperiods", 2) or 2)
+            cmd += ["-r", str(rate), "-p", str(period), "-n", str(nperiods)]
+        extra = s.get("extra_args", "").strip()
+        if extra:
+            try:
+                cmd += shlex.split(extra)
+            except Exception:
+                # Fallback: append as a single token to avoid crash
+                cmd.append(extra)
+        return cmd
+
+    def _apply_jack_manage_mode_to_controls(self):
+        manage = self.jack_settings.get("manage", True)
+        # If not managing, disable start/stop/restart for JACK
+        for btn in (getattr(self, 'jack_start_btn', None), getattr(self, 'jack_stop_btn', None), getattr(self, 'jack_restart_btn', None)):
+            if btn is not None:
+                btn.setEnabled(bool(manage))
 
     def _st_path_root(self) -> Path:
         return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
@@ -1763,7 +1866,12 @@ class ServiceControlTab(QWidget):
             try:
                 if service_key == 'jack':
                     # Special handling for JACK
-                    result = subprocess.run(["jack_lsp"], capture_output=True, text=True)
+                    try:
+                        result = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=0.7)
+                    except subprocess.TimeoutExpired:
+                        status_label.setText("⏳ Probe Timeout")
+                        status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                        continue
                     if result.returncode == 0:
                         status_label.setText("✅ Running")
                         status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
@@ -1773,7 +1881,12 @@ class ServiceControlTab(QWidget):
                 elif service_key == 'liquidsoap':
                     # Liquidsoap is launched as a user process (not a systemd unit)
                     # Detect by process name to reflect actual running state
-                    proc_check = subprocess.run(["pgrep", "-x", "liquidsoap"], capture_output=True)
+                    try:
+                        proc_check = subprocess.run(["pgrep", "-x", "liquidsoap"], capture_output=True, timeout=0.7)
+                    except subprocess.TimeoutExpired:
+                        status_label.setText("⏳ Probe Timeout")
+                        status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                        continue
                     if proc_check.returncode == 0:
                         status_label.setText("✅ Running")
                         status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
@@ -1784,12 +1897,22 @@ class ServiceControlTab(QWidget):
                     # Check if it's a user service
                     if service_info.get('user_service', False):
                         # User systemd service check
-                        result = subprocess.run(["systemctl", "--user", "is-active", service_info['systemd']], 
-                                              capture_output=True, text=True)
+                        try:
+                            result = subprocess.run(["systemctl", "--user", "is-active", service_info['systemd']], 
+                                              capture_output=True, text=True, timeout=0.7)
+                        except subprocess.TimeoutExpired:
+                            status_label.setText("⏳ Probe Timeout")
+                            status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                            continue
                     else:
                         # Standard systemd service check
-                        result = subprocess.run(["systemctl", "is-active", service_info['systemd']], 
-                                              capture_output=True, text=True)
+                        try:
+                            result = subprocess.run(["systemctl", "is-active", service_info['systemd']], 
+                                              capture_output=True, text=True, timeout=0.7)
+                        except subprocess.TimeoutExpired:
+                            status_label.setText("⏳ Probe Timeout")
+                            status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                            continue
                     
                     if result.stdout.strip() == "active":
                         status_label.setText("✅ Running")
@@ -1833,10 +1956,26 @@ class ServiceControlTab(QWidget):
         service_info = self.services[service_key]
         try:
             if service_key == 'jack':
-                # Start JACK with basic configuration
-                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"],
-                               check=False, capture_output=True)
-                QMessageBox.information(self, "JACK Started", "JACK audio server started successfully.")
+                # Respect management mode; if disabled, inform user
+                if not self.jack_settings.get("manage", True):
+                    QMessageBox.information(self, "JACK Managed Externally",
+                                            "RDX is set to not manage the JACK server.\n\n"
+                                            "Enable management in the JACK Settings (Configure) if you want RDX to start it.")
+                    return
+                # Avoid duplicate starts
+                if self._jack_is_running():
+                    QMessageBox.information(self, "JACK Already Running", "JACK audio server is already running.")
+                    return
+                cmd = self._build_jackd_command()
+                # Start jackd detached; errors will still show if immediate failure
+                try:
+                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                except FileNotFoundError:
+                    QMessageBox.critical(self, "JACK Not Installed", "'jackd' not found in PATH. Install JACK (jackd/jackd2).")
+                    return
+                # Brief grace period then probe
+                QTimer.singleShot(800, self.update_all_status)
+                QMessageBox.information(self, "JACK Start Requested", f"Launched JACK: {' '.join(cmd)}")
 
             elif service_key == 'liquidsoap':
                 # Start liquidsoap with generated config
@@ -1952,9 +2091,16 @@ class ServiceControlTab(QWidget):
         
         try:
             if service_key == 'jack':
-                # Stop JACK
-                subprocess.run(["killall", "jackd"], check=False)
-                QMessageBox.information(self, "JACK Stopped", "JACK audio server stopped.")
+                if not self.jack_settings.get("manage", True):
+                    QMessageBox.information(self, "JACK Managed Externally",
+                                            "RDX is set to not manage the JACK server, so it won't stop it.")
+                    return
+                # Stop JACK (best-effort)
+                subprocess.run(["killall", "-q", "jackd"], check=False)
+                # Also attempt D-Bus jack control if available
+                subprocess.run(["jack_control", "exit"], check=False)
+                QTimer.singleShot(500, self.update_all_status)
+                QMessageBox.information(self, "JACK Stop Requested", "Requested JACK shutdown.")
                 
             elif service_key == 'liquidsoap':
                 # Stop liquidsoap
@@ -1979,12 +2125,21 @@ class ServiceControlTab(QWidget):
         service_info = self.services[service_key]
         try:
             if service_key == 'jack':
-                # Restart JACK
-                subprocess.run(["killall", "jackd"], check=False)
-                time.sleep(1)
-                subprocess.run(["jackd", "-d", "alsa", "-r", "44100", "-p", "1024"],
-                               check=False, capture_output=True)
-                QMessageBox.information(self, "JACK Restarted", "JACK audio server restarted successfully.")
+                if not self.jack_settings.get("manage", True):
+                    QMessageBox.information(self, "JACK Managed Externally",
+                                            "RDX is set to not manage the JACK server.")
+                    return
+                subprocess.run(["killall", "-q", "jackd"], check=False)
+                subprocess.run(["jack_control", "exit"], check=False)
+                time.sleep(0.8)
+                cmd = self._build_jackd_command()
+                try:
+                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                except FileNotFoundError:
+                    QMessageBox.critical(self, "JACK Not Installed", "'jackd' not found in PATH. Install JACK (jackd/jackd2).")
+                    return
+                QTimer.singleShot(900, self.update_all_status)
+                QMessageBox.information(self, "JACK Restart Requested", f"Restarted JACK with: {' '.join(cmd)}")
 
             elif service_key == 'liquidsoap':
                 # Restart liquidsoap
@@ -2355,8 +2510,78 @@ verify
     def configure_service(self, service_key):
         """Configure a specific service"""
         service_info = self.services[service_key]
-        QMessageBox.information(self, "Configure Service", 
-                              f"Configuration for {service_info['name']} will open the appropriate settings.")
+        if service_key == 'jack':
+            self._open_jack_settings_dialog()
+            return
+        QMessageBox.information(self, "Configure Service", f"Configuration for {service_info['name']} will open the appropriate settings.")
+
+    def _open_jack_settings_dialog(self):
+        from PyQt5.QtWidgets import QFormLayout, QDialog, QDialogButtonBox, QComboBox, QCheckBox, QLineEdit, QSpinBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("JACK Settings")
+        form = QFormLayout(dlg)
+
+        # Manage toggle
+        manage_cb = QCheckBox("Let RDX manage the JACK server")
+        manage_cb.setChecked(self.jack_settings.get("manage", True))
+        form.addRow("Management:", manage_cb)
+
+        # Backend selector
+        backend_combo = QComboBox()
+        backend_combo.addItems(["alsa", "dummy"])  # conservative set; more can be added later
+        cur_backend = self.jack_settings.get("backend", "alsa")
+        idx = backend_combo.findText(cur_backend)
+        backend_combo.setCurrentIndex(max(0, idx))
+        form.addRow("Backend:", backend_combo)
+
+        # ALSA device
+        dev_edit = QLineEdit(self.jack_settings.get("device", ""))
+        dev_edit.setPlaceholderText("e.g., hw:PCH or hw:0 (leave blank for default)")
+        form.addRow("ALSA Device:", dev_edit)
+
+        # Numeric params
+        rate_spin = QSpinBox(); rate_spin.setRange(8000, 192000); rate_spin.setSingleStep(1000)
+        rate_spin.setValue(int(self.jack_settings.get("rate", 48000)))
+        form.addRow("Sample Rate (Hz):", rate_spin)
+
+        period_spin = QSpinBox(); period_spin.setRange(16, 4096)
+        period_spin.setValue(int(self.jack_settings.get("period", 256)))
+        form.addRow("Frames/Period:", period_spin)
+
+        nper_spin = QSpinBox(); nper_spin.setRange(2, 8)
+        nper_spin.setValue(int(self.jack_settings.get("nperiods", 2)))
+        form.addRow("Periods/Buffer:", nper_spin)
+
+        rt_cb = QCheckBox("Enable realtime (-R)")
+        rt_cb.setChecked(self.jack_settings.get("realtime", True))
+        form.addRow("Realtime:", rt_cb)
+
+        extra_edit = QLineEdit(self.jack_settings.get("extra_args", ""))
+        extra_edit.setPlaceholderText("Extra jackd driver args (advanced)")
+        form.addRow("Extra Args:", extra_edit)
+
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        form.addRow(buttons)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+
+        if dlg.exec_() == QDialog.Accepted:
+            data = {
+                "manage": manage_cb.isChecked(),
+                "backend": backend_combo.currentText(),
+                "device": dev_edit.text().strip(),
+                "rate": int(rate_spin.value()),
+                "period": int(period_spin.value()),
+                "nperiods": int(nper_spin.value()),
+                "realtime": rt_cb.isChecked(),
+                "extra_args": extra_edit.text().strip(),
+            }
+            self._save_jack_settings(data)
+            self._apply_jack_manage_mode_to_controls()
+            # Show preview of resulting command
+            cmd = self._build_jackd_command()
+            QMessageBox.information(self, "JACK Settings Saved", f"JACK settings saved.\n\nCommand preview:\n{' '.join(cmd)}")
         
     def start_all_services(self):
         """Start all services in correct order"""
@@ -2370,8 +2595,8 @@ verify
             # Start in sequence with simple checks
             try:
                 # JACK
-                jack_ok = subprocess.run(["jack_lsp"], capture_output=True).returncode == 0
-                if not jack_ok:
+                jack_ok = subprocess.run(["jack_lsp"], capture_output=True, timeout=0.7).returncode == 0
+                if not jack_ok and self.jack_settings.get("manage", True):
                     self.start_service('jack')
                     time.sleep(1)
 
@@ -3028,7 +3253,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.2")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.3")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -3088,7 +3313,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.2")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.3")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -3170,7 +3395,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.3.2")
+    app.setApplicationVersion("3.3.3")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
