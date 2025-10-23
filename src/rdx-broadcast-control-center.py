@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.31
+RDX Professional Broadcast Control Center v3.3.0
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QComboBox, QLineEdit, QTableWidget, QTableWidgetItem,
                             QHeaderView, QCheckBox, QSpinBox, QProgressBar,
                             QScrollArea, QFormLayout, QDialog, QDialogButtonBox,
-                            QSizePolicy)
+                            QSizePolicy, QSystemTrayIcon, QMenu)
 from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QIcon, QPalette
 import urllib.request
@@ -943,205 +943,390 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
 
 
 class JackMatrixTab(QWidget):
-    """Tab 3: JACK Matrix - Visual connection matrix with critical connection protection"""
-    
+    """Tab 3: JACK Patchboard - Simple stereo-aware patching with protection"""
+
     def __init__(self):
         super().__init__()
+        # Parsed JACK ports by client: {client: {"in": [fullport,...], "out": [...]}}
+        self.ports = {}
+        # Known clients (sorted)
         self.jack_clients = []
-        self.connections = {}
-        self.critical_connections = set()
+        # Critical protected pairs: {"src→dst", ...}
+        self.critical_pairs = set()
+        # Load persisted protected pairs (if any)
+        self._load_protected_pairs()
         self.setup_ui()
-        
+
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
+
         # JACK Status Section
         status_group = QGroupBox("🔌 JACK Status")
         status_layout = QHBoxLayout(status_group)
-        
-        self.jack_status_label = QLabel("Status: ⏳ Checking JACK...")
+
+        self.jack_status_label = QLabel("Status: ⏳ Checking JACK…")
         status_layout.addWidget(self.jack_status_label)
-        
-        refresh_btn = QPushButton("🔄 Refresh Connections")
+
+        refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.clicked.connect(self.refresh_jack_connections)
         status_layout.addWidget(refresh_btn)
-        
+
         layout.addWidget(status_group)
-        
-        # Connection Matrix Section
-        matrix_group = QGroupBox("🔗 Connection Matrix")
-        matrix_layout = QVBoxLayout(matrix_group)
-        
-        # Scroll area for matrix
-        scroll_area = QScrollArea()
-        self.matrix_widget = QWidget()
-        self.matrix_layout = QGridLayout(self.matrix_widget)
-        scroll_area.setWidget(self.matrix_widget)
-        scroll_area.setWidgetResizable(True)
-        matrix_layout.addWidget(scroll_area)
-        
-        layout.addWidget(matrix_group)
-        
-        # Connection Controls
-        controls_group = QGroupBox("⚙️ Connection Controls")
-        controls_layout = QGridLayout(controls_group)
-        
-        # Critical connection controls
-        set_critical_btn = QPushButton("🔒 SET CRITICAL")
-        set_critical_btn.setStyleSheet("QPushButton { background-color: #e67e22; color: white; font-weight: bold; padding: 8px; }")
-        set_critical_btn.clicked.connect(self.set_critical_connection)
-        controls_layout.addWidget(set_critical_btn, 0, 0)
-        
-        remove_critical_btn = QPushButton("🔓 REMOVE CRITICAL")
-        remove_critical_btn.setStyleSheet("QPushButton { background-color: #95a5a6; color: white; font-weight: bold; padding: 8px; }")
-        remove_critical_btn.clicked.connect(self.remove_critical_connection)
-        controls_layout.addWidget(remove_critical_btn, 0, 1)
-        
-        auto_connect_btn = QPushButton("🎯 AUTO-CONNECT")
-        auto_connect_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+
+        # Patchboard Section
+        patch_group = QGroupBox("🎚️ Patchboard (Stereo)")
+        patch_layout = QGridLayout(patch_group)
+
+        patch_layout.addWidget(QLabel("Source (stereo out)"), 0, 0)
+        patch_layout.addWidget(QLabel("Destination (stereo in)"), 0, 1)
+        patch_layout.addWidget(QLabel("Actions"), 0, 2)
+
+        self.source_combo = QComboBox()
+        self.dest_combo = QComboBox()
+        patch_layout.addWidget(self.source_combo, 1, 0)
+        patch_layout.addWidget(self.dest_combo, 1, 1)
+
+        actions_w = QWidget()
+        actions_h = QHBoxLayout(actions_w)
+        actions_h.setContentsMargins(0, 0, 0, 0)
+        self.protect_checkbox = QCheckBox("Protect pair")
+        btn_connect = QPushButton("🔗 Connect L/R")
+        btn_connect.setStyleSheet("QPushButton { background-color: #27ae60; color: white; }")
+        btn_connect.clicked.connect(self.connect_selected_pair)
+        btn_disconnect = QPushButton("⛓️ Disconnect")
+        btn_disconnect.setStyleSheet("QPushButton { background-color: #e74c3c; color: white; }")
+        btn_disconnect.clicked.connect(self.disconnect_selected_pair)
+        actions_h.addWidget(self.protect_checkbox)
+        btn_unprotect = QPushButton("Unprotect current")
+        btn_unprotect.clicked.connect(self.unprotect_current_pair)
+        actions_h.addWidget(btn_unprotect)
+        actions_h.addWidget(btn_connect)
+        actions_h.addWidget(btn_disconnect)
+        actions_h.addStretch(1)
+        patch_layout.addWidget(actions_w, 1, 2)
+
+        layout.addWidget(patch_group)
+
+        # Info on detected ports
+        info_group = QGroupBox("📊 Detected JACK clients and ports")
+        info_v = QVBoxLayout(info_group)
+        self.jack_info = QTextEdit()
+        self.jack_info.setReadOnly(True)
+        self.jack_info.setMinimumHeight(140)
+        self.jack_info.setStyleSheet("QTextEdit { font-family: monospace; }")
+        info_v.addWidget(self.jack_info)
+        layout.addWidget(info_group)
+
+        # Quick actions
+        controls_group = QGroupBox("⚙️ Quick Actions")
+        controls_layout = QHBoxLayout(controls_group)
+        auto_connect_btn = QPushButton("🎯 Auto-Connect (RD → ST → LS)")
+        auto_connect_btn.setStyleSheet("QPushButton { background-color: #2980b9; color: white; }")
         auto_connect_btn.clicked.connect(self.auto_connect)
-        controls_layout.addWidget(auto_connect_btn, 0, 2)
-        
-        # Emergency controls
-        emergency_btn = QPushButton("🚨 EMERGENCY DISCONNECT ALL")
-        emergency_btn.setStyleSheet("QPushButton { background-color: #c0392b; color: white; font-weight: bold; padding: 10px; }")
+        emergency_btn = QPushButton("🚨 Disconnect All (non-critical)")
+        emergency_btn.setStyleSheet("QPushButton { background-color: #c0392b; color: white; }")
         emergency_btn.clicked.connect(self.emergency_disconnect)
-        controls_layout.addWidget(emergency_btn, 1, 0, 1, 3)
-        
+        controls_layout.addWidget(auto_connect_btn)
+        controls_layout.addWidget(emergency_btn)
+        controls_layout.addStretch(1)
         layout.addWidget(controls_group)
-        
+
         # Initialize
         self.refresh_jack_connections()
-        
+
+    # ---- JACK helpers ----
     def refresh_jack_connections(self):
-        """Refresh JACK connections and update matrix"""
+        """Refresh JACK ports and update UI elements."""
         try:
             # Check if JACK is running
-            result = subprocess.run(["jack_lsp"], capture_output=True, text=True)
-            if result.returncode == 0:
-                self.jack_status_label.setText("Status: ✅ JACK Running")
-                self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
-                
-                # Get client list
-                self.jack_clients = self.parse_jack_clients(result.stdout)
-                self.update_connection_matrix()
-            else:
+            base = subprocess.run(["jack_lsp"], capture_output=True, text=True)
+            if base.returncode != 0:
                 self.jack_status_label.setText("Status: ❌ JACK Not Running")
                 self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
-                
+                self.ports = {}
+                self.jack_clients = []
+                self.source_combo.clear()
+                self.dest_combo.clear()
+                self.jack_info.setPlainText("JACK is not running. Start JACK and refresh.")
+                return
+            # Ports with properties
+            res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True)
+            if res.returncode != 0:
+                out = base.stdout
+            else:
+                out = res.stdout
+            self.ports = self._parse_jack_ports(out)
+            self.jack_clients = sorted(list(self.ports.keys()))
+            # Populate combos
+            self._populate_combos()
+            # Info text
+            self._update_info()
+            self.jack_status_label.setText("Status: ✅ JACK Running")
+            self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
         except FileNotFoundError:
             self.jack_status_label.setText("Status: ❌ JACK Tools Not Found")
             self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
-            
-    def parse_jack_clients(self, jack_lsp_output):
-        """Parse jack_lsp output to get client names"""
-        clients = set()
-        for line in jack_lsp_output.strip().split('\n'):
-            if ':' in line:
-                client = line.split(':')[0]
-                clients.add(client)
-        return sorted(list(clients))
-        
-    def update_connection_matrix(self):
-        """Update the visual connection matrix"""
-        # Clear existing matrix
-        for i in reversed(range(self.matrix_layout.count())):
-            self.matrix_layout.itemAt(i).widget().setParent(None)
-            
-        if not self.jack_clients:
-            no_clients_label = QLabel("No JACK clients detected")
-            no_clients_label.setAlignment(Qt.AlignCenter)
-            self.matrix_layout.addWidget(no_clients_label, 0, 0)
-            return
-            
-        # Create header row and column
-        self.matrix_layout.addWidget(QLabel(""), 0, 0)  # Top-left corner
-        
-        for i, client in enumerate(self.jack_clients):
-            # Column headers
-            header_label = QLabel(client)
-            header_label.setStyleSheet("QLabel { font-weight: bold; background-color: #ecf0f1; padding: 5px; }")
-            self.matrix_layout.addWidget(header_label, 0, i + 1)
-            
-            # Row headers
-            header_label = QLabel(client)
-            header_label.setStyleSheet("QLabel { font-weight: bold; background-color: #ecf0f1; padding: 5px; }")
-            self.matrix_layout.addWidget(header_label, i + 1, 0)
-            
-        # Create connection buttons
-        for i, source_client in enumerate(self.jack_clients):
-            for j, dest_client in enumerate(self.jack_clients):
-                if i == j:
-                    # Self-connection (diagonal)
-                    label = QLabel("—")
-                    label.setAlignment(Qt.AlignCenter)
-                    label.setStyleSheet("QLabel { background-color: #95a5a6; color: white; padding: 5px; }")
-                    self.matrix_layout.addWidget(label, i + 1, j + 1)
+
+    def _parse_jack_ports(self, txt: str) -> dict:
+        """Parse 'jack_lsp -p' output into {client: {in:[ports], out:[ports]}}."""
+        ports = {}
+        current_port = None
+        for raw in (txt or "").splitlines():
+            line = raw.rstrip()
+            if not line:
+                continue
+            if not line.startswith(" ") and ":" in line:
+                # Port line like 'client:port'
+                current_port = line.strip()
+                client = current_port.split(":", 1)[0]
+                ports.setdefault(client, {"in": [], "out": []})
+                # Default direction unknown until properties parsed; assume both lists handle after
+                # If we never see properties, include heuristically to out if name contains 'out' else in
+                pname = current_port.split(":", 1)[1].lower()
+                if "out" in pname and "in" not in pname:
+                    ports[client]["out"].append(current_port)
+                elif "in" in pname and "out" not in pname:
+                    ports[client]["in"].append(current_port)
                 else:
-                    # Connection button
-                    connection_key = f"{source_client}→{dest_client}"
-                    
-                    btn = QPushButton("❌")
-                    btn.setMaximumSize(50, 30)
-                    
-                    # Check if this is a critical connection
-                    if connection_key in self.critical_connections:
-                        btn.setText("🔒")
-                        btn.setStyleSheet("QPushButton { background-color: #e67e22; color: white; font-weight: bold; }")
-                    else:
-                        btn.setStyleSheet("QPushButton { background-color: #ecf0f1; }")
-                        
-                    btn.clicked.connect(lambda checked, src=source_client, dst=dest_client: 
-                                      self.toggle_connection(src, dst))
-                    
-                    self.matrix_layout.addWidget(btn, i + 1, j + 1)
-                    
-    def toggle_connection(self, source_client, dest_client):
-        """Toggle JACK connection between clients"""
-        connection_key = f"{source_client}→{dest_client}"
-        
-        # Check if this is a critical connection
-        if connection_key in self.critical_connections:
-            reply = QMessageBox.question(self, "Critical Connection", 
-                                       f"This is a critical connection: {connection_key}\n"
-                                       "Are you sure you want to modify it?",
-                                       QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.No:
+                    # Will be corrected when properties line encountered
+                    pass
+            elif line.strip().startswith("properties:") and current_port:
+                props = line.split(":", 1)[1]
+                client = current_port.split(":", 1)[0]
+                # Remove from both to avoid duplicates
+                try:
+                    if current_port in ports.get(client, {}).get("in", []):
+                        ports[client]["in"].remove(current_port)
+                    if current_port in ports.get(client, {}).get("out", []):
+                        ports[client]["out"].remove(current_port)
+                except Exception:
+                    pass
+                if "output" in props:
+                    ports[client]["out"].append(current_port)
+                else:
+                    ports[client]["in"].append(current_port)
+        return ports
+
+    def _populate_combos(self):
+        def stereo_candidates(direction: str) -> list:
+            cands = []
+            for c, d in self.ports.items():
+                if len(d.get(direction, [])) >= 2:
+                    cands.append(c)
+            # Prefer recognizable names in a friendly order
+            def key(name: str):
+                ln = name.lower()
+                score = 0
+                if "rivendell" in ln or ln.startswith("rd"): score -= 10
+                if "stereo" in ln: score -= 9
+                if "liquidsoap" in ln: score -= 8
+                if name.startswith("system"): score -= 7
+                return (score, name)
+            return [x for x in sorted(cands, key=key)]
+        srcs = stereo_candidates("out")
+        dsts = stereo_candidates("in")
+        cur_s = self.source_combo.currentText()
+        cur_d = self.dest_combo.currentText()
+        self.source_combo.clear(); self.source_combo.addItems(srcs)
+        self.dest_combo.clear(); self.dest_combo.addItems(dsts)
+        # Try restore previous selection
+        if cur_s in srcs:
+            self.source_combo.setCurrentText(cur_s)
+        if cur_d in dsts:
+            self.dest_combo.setCurrentText(cur_d)
+
+    def _update_info(self):
+        lines = []
+        for c in self.jack_clients:
+            ins = len(self.ports.get(c, {}).get("in", []))
+            outs = len(self.ports.get(c, {}).get("out", []))
+            lines.append(f"{c}: in={ins} out={outs}")
+        self.jack_info.setPlainText("\n".join(lines) if lines else "No JACK clients detected.")
+
+    def _stereo_pair(self, client: str, direction: str) -> list:
+        """Return first two ports for client in given direction (in/out)."""
+        ports = list(self.ports.get(client, {}).get(direction, []))
+        # Sort to ensure 1,2 ordering when named with numbers
+        def sort_key(p: str):
+            pn = p.split(":", 1)[1]
+            m = re.search(r"(\d+)$", pn)
+            return int(m.group(1)) if m else 0
+        ports.sort(key=sort_key)
+        return ports[:2]
+
+    def connect_selected_pair(self):
+        src = self.source_combo.currentText().strip()
+        dst = self.dest_combo.currentText().strip()
+        if not src or not dst or src == dst:
+            QMessageBox.warning(self, "Invalid Selection", "Choose distinct source and destination with stereo ports.")
+            return
+        key = f"{src}→{dst}"
+        if self.protect_checkbox.isChecked():
+            self.critical_pairs.add(key)
+            self._save_protected_pairs()
+        s_ports = self._stereo_pair(src, "out")
+        d_ports = self._stereo_pair(dst, "in")
+        if len(s_ports) < 2 or len(d_ports) < 2:
+            QMessageBox.warning(self, "Not Stereo", "Selected clients do not expose at least 2 ports each.")
+            return
+        ok = True
+        errs = []
+        for sp, dp in zip(s_ports, d_ports):
+            try:
+                subprocess.run(["jack_connect", sp, dp], check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                ok = False
+                errs.append(f"{sp} -> {dp}: {e}")
+        if ok:
+            QMessageBox.information(self, "Connected", f"{src} → {dst} (L/R)")
+        else:
+            QMessageBox.warning(self, "Partial Failure", "Some connections failed:\n" + "\n".join(errs))
+
+    def disconnect_selected_pair(self):
+        src = self.source_combo.currentText().strip()
+        dst = self.dest_combo.currentText().strip()
+        if not src or not dst or src == dst:
+            return
+        key = f"{src}→{dst}"
+        if key in self.critical_pairs:
+            reply = QMessageBox.question(self, "Protected Pair", f"{key} is protected. Disconnect anyway?",
+                                         QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
                 return
-                
-        QMessageBox.information(self, "Connection Toggle", 
-                              f"Toggle connection: {source_client} → {dest_client}\n"
-                              "(JACK connection management will be implemented)")
-        
-    def set_critical_connection(self):
-        """Set a connection as critical (protected)"""
-        # This would show a dialog to select connections to protect
-        QMessageBox.information(self, "Set Critical", 
-                              "Select connections to mark as critical (protected)")
-        
-    def remove_critical_connection(self):
-        """Remove critical status from a connection"""
-        QMessageBox.information(self, "Remove Critical", 
-                              "Select critical connections to unprotect")
-        
+        s_ports = self._stereo_pair(src, "out")
+        d_ports = self._stereo_pair(dst, "in")
+        errs = []
+        for sp, dp in zip(s_ports, d_ports):
+            try:
+                subprocess.run(["jack_disconnect", sp, dp], check=False, capture_output=True, text=True)
+            except Exception as e:
+                errs.append(f"{sp} -/-> {dp}: {e}")
+        if errs:
+            QMessageBox.warning(self, "Disconnect Issues", "\n".join(errs))
+        else:
+            QMessageBox.information(self, "Disconnected", f"{src} ⛓️ {dst}")
+
+    def unprotect_current_pair(self):
+        """Remove protection flag from the currently selected Source→Destination pair."""
+        src = self.source_combo.currentText().strip()
+        dst = self.dest_combo.currentText().strip()
+        if not src or not dst or src == dst:
+            return
+        key = f"{src}→{dst}"
+        if key in self.critical_pairs:
+            self.critical_pairs.remove(key)
+            self._save_protected_pairs()
+            QMessageBox.information(self, "Unprotected", f"Removed protection for: {key}")
+        else:
+            QMessageBox.information(self, "Not Protected", f"Current pair is not protected: {key}")
+
     def auto_connect(self):
-        """Auto-connect based on broadcast chain logic"""
-        QMessageBox.information(self, "Auto-Connect", 
-                              "Auto-connecting broadcast chain:\n"
-                              "Rivendell → Stereo Tool → Liquidsoap")
-        
+        """Heuristic chain: Rivendell/rd* → Stereo Tool → Liquidsoap; also LS → system:playback."""
+        # Prefer commonly named clients
+        def find_like(names, direction):
+            for c in self.jack_clients:
+                lc = c.lower()
+                if any(n in lc for n in names):
+                    if len(self.ports.get(c, {}).get(direction, [])) >= 2:
+                        return c
+            return None
+        rd = find_like(["rivendell", "rd"], "out") or find_like(["system"], "out")
+        st = find_like(["stereo tool", "stereotool", "thimeo"], "in")
+        ls_in = find_like(["liquidsoap"], "in")
+        ls_out = find_like(["liquidsoap"], "out")
+        sys_play = find_like(["system"], "in")
+        actions = []
+        if rd and st:
+            self.source_combo.setCurrentText(rd)
+            self.dest_combo.setCurrentText(st)
+            self.connect_selected_pair()
+            actions.append(f"{rd}→{st}")
+        if st and ls_in:
+            self.source_combo.setCurrentText(st)
+            self.dest_combo.setCurrentText(ls_in)
+            self.connect_selected_pair()
+            actions.append(f"{st}→{ls_in}")
+        if ls_out and sys_play:
+            self.source_combo.setCurrentText(ls_out)
+            self.dest_combo.setCurrentText(sys_play)
+            self.connect_selected_pair()
+            actions.append(f"{ls_out}→{sys_play}")
+        if not actions:
+            QMessageBox.information(self, "Auto-Connect", "No suitable clients found for auto patching.")
+
     def emergency_disconnect(self):
-        """Emergency disconnect all non-critical connections"""
-        reply = QMessageBox.warning(self, "EMERGENCY DISCONNECT", 
-                                   "⚠️ This will disconnect ALL non-critical JACK connections!\n"
-                                   "Critical connections will be preserved.\n\n"
-                                   "Continue?",
-                                   QMessageBox.Yes | QMessageBox.No)
-        
-        if reply == QMessageBox.Yes:
-            QMessageBox.information(self, "Emergency Disconnect", 
-                                  "All non-critical connections disconnected.\n"
-                                  "Critical connections preserved.")
+        reply = QMessageBox.warning(self, "EMERGENCY DISCONNECT",
+                                    "⚠️ This will disconnect ALL non-critical JACK connections!\n\nContinue?",
+                                    QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+        # Parse current connections and disconnect those not protected
+        try:
+            res = subprocess.run(["jack_lsp", "-c"], capture_output=True, text=True)
+            txt = res.stdout or ""
+            to_disc = []
+            cur_src = None
+            for line in txt.splitlines():
+                if not line:
+                    continue
+                if not line.startswith(" "):
+                    cur_src = line.strip()
+                    continue
+                if line.strip().startswith("connections:"):
+                    # following lines are indented connection targets
+                    continue
+                if cur_src and line.startswith("    "):
+                    dst = line.strip()
+                    # Extract client names
+                    s_client = cur_src.split(":", 1)[0]
+                    d_client = dst.split(":", 1)[0]
+                    key = f"{s_client}→{d_client}"
+                    if key not in self.critical_pairs:
+                        to_disc.append((cur_src, dst))
+            errs = []
+            for sp, dp in to_disc:
+                try:
+                    subprocess.run(["jack_disconnect", sp, dp], check=False, capture_output=True, text=True)
+                except Exception as e:
+                    errs.append(f"{sp} -/-> {dp}: {e}")
+            if errs:
+                QMessageBox.warning(self, "Disconnect Issues", "\n".join(errs))
+            else:
+                QMessageBox.information(self, "Emergency Disconnect", "All non-critical connections disconnected.")
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", f"Could not enumerate connections: {e}")
+
+    # ---- Persistence for protected pairs ----
+    def _config_dir(self) -> Path:
+        p = Path.home() / ".config" / "rdx"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return p
+
+    def _prot_file(self) -> Path:
+        return self._config_dir() / "jack_protected.json"
+
+    def _load_protected_pairs(self):
+        try:
+            pf = self._prot_file()
+            if pf.exists():
+                with open(pf, 'r') as f:
+                    data = json.load(f)
+                pairs = data.get('pairs', [])
+                if isinstance(pairs, list):
+                    self.critical_pairs = set(str(x) for x in pairs)
+        except Exception:
+            self.critical_pairs = set()
+
+    def _save_protected_pairs(self):
+        try:
+            pf = self._prot_file()
+            with open(pf, 'w') as f:
+                json.dump({"pairs": sorted(list(self.critical_pairs))}, f, indent=2)
+        except Exception:
+            pass
 
 
 class ServiceControlTab(QWidget):
@@ -2182,8 +2367,23 @@ class StereoToolManagerTab(QWidget):
         btn_download.clicked.connect(self.download_latest)
         actions.addWidget(btn_download)
 
+        btn_latest = QPushButton("🔗 Download from 'Latest' URL")
+        btn_latest.setToolTip("Uses a configured 'latest' URL if set, or prompts you to paste one.")
+        btn_latest.clicked.connect(self.download_from_latest)
+        actions.addWidget(btn_latest)
+
         actions.addStretch(1)
         layout.addLayout(actions)
+
+        # Optional 'Latest URL' field (persisted in settings)
+        latest_group = QGroupBox("Optional: Official 'latest' URL")
+        lg = QHBoxLayout(latest_group)
+        self.latest_url_input = QLineEdit()
+        self.latest_url_input.setPlaceholderText("https://… (paste an official latest link here)")
+        self.latest_url_input.editingFinished.connect(self._save_latest_url)
+        lg.addWidget(QLabel("Latest URL:"))
+        lg.addWidget(self.latest_url_input)
+        layout.addWidget(latest_group)
 
         # Table of instances
         self.table = QTableWidget()
@@ -2201,6 +2401,12 @@ class StereoToolManagerTab(QWidget):
         hl = QVBoxLayout(help_box)
         hl.addWidget(QLabel("RDX stores Stereo Tool under ~/.config/rdx/processing/stereotool and switches the active version using a symlink. A per-user systemd unit runs the active instance."))
         layout.addWidget(help_box)
+
+        # Load any saved 'latest' URL
+        try:
+            self.latest_url_input.setText(self._load_latest_url())
+        except Exception:
+            pass
 
     def _refresh_table(self):
         self.table.setRowCount(len(self.instances))
@@ -2277,6 +2483,32 @@ class StereoToolManagerTab(QWidget):
             self.status.setText(f"✅ Added: {dest}")
         except Exception as e:
             QMessageBox.critical(self, "Download Error", f"Failed to download: {e}")
+
+    def download_from_latest(self):
+        """Download using the configured 'latest' URL (if present), else prompt for one and persist it."""
+        try:
+            url = (self.latest_url_input.text() or "").strip()
+            if not url:
+                from PyQt5.QtWidgets import QInputDialog
+                url, ok = QInputDialog.getText(self, "Latest URL", "Paste the official 'latest' JACK x64 link:")
+                if not ok or not url.strip():
+                    return
+                self.latest_url_input.setText(url.strip())
+                self._save_latest_url()
+            self._root().mkdir(parents=True, exist_ok=True)
+            dest = self._root() / os.path.basename(url)
+            self.status.setText(f"Downloading {url} → {dest}…")
+            urllib.request.urlretrieve(url, str(dest))
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
+            self._add_instance_record(name=dest.name, path=str(dest), version=self._guess_version(dest.name))
+            self._save_instances()
+            self._refresh_table()
+            self.status.setText(f"✅ Downloaded: {dest}")
+        except Exception as e:
+            QMessageBox.critical(self, "Latest URL Error", f"Failed to download from latest URL: {e}")
 
     def add_from_file(self):
         try:
@@ -2364,6 +2596,42 @@ class StereoToolManagerTab(QWidget):
     def _guess_version(self, name: str) -> str:
         m = re.search(r"([0-9]{3,4,5})", name)
         return m.group(1) if m else ""
+
+    # ---- Persist 'latest' URL in settings.json ----
+    def _settings_path(self) -> Path:
+        p = Path.home() / ".config" / "rdx"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return p / "settings.json"
+
+    def _load_latest_url(self) -> str:
+        try:
+            sp = self._settings_path()
+            if sp.exists():
+                with open(sp, 'r') as f:
+                    data = json.load(f)
+                return str(data.get('st_latest_url', ''))
+        except Exception:
+            pass
+        return ""
+
+    def _save_latest_url(self):
+        try:
+            sp = self._settings_path()
+            data = {}
+            if sp.exists():
+                try:
+                    with open(sp, 'r') as f:
+                        data = json.load(f) or {}
+                except Exception:
+                    data = {}
+            data['st_latest_url'] = self.latest_url_input.text().strip()
+            with open(sp, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception:
+            pass
 
     def activate(self, idx: int):
         try:
@@ -2460,14 +2728,159 @@ WantedBy=default.target
             QMessageBox.critical(self, "Remove Error", f"Failed to remove: {e}")
 
 
+class SettingsTab(QWidget):
+    """Tab: Settings - Autostart and System Tray preferences"""
+
+    def __init__(self, main_window):
+        super().__init__()
+        self.main = main_window
+        self.setup_ui()
+        self.refresh_status()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Autostart via systemd --user
+        auto_group = QGroupBox("▶️ Autostart (systemd — user)")
+        gl = QGridLayout(auto_group)
+        self.autostart_status = QLabel("Status: ⏳")
+        gl.addWidget(self.autostart_status, 0, 0, 1, 3)
+        btn_install = QPushButton("Install/Update user unit")
+        btn_install.clicked.connect(self.install_or_update_unit)
+        gl.addWidget(btn_install, 1, 0)
+        btn_enable = QPushButton("Enable on Login")
+        btn_enable.setStyleSheet("QPushButton { background-color: #27ae60; color: white; }")
+        btn_enable.clicked.connect(self.enable_unit)
+        gl.addWidget(btn_enable, 1, 1)
+        btn_disable = QPushButton("Disable on Login")
+        btn_disable.setStyleSheet("QPushButton { background-color: #e74c3c; color: white; }")
+        btn_disable.clicked.connect(self.disable_unit)
+        gl.addWidget(btn_disable, 1, 2)
+        btn_start = QPushButton("Start Now")
+        btn_start.clicked.connect(self.start_unit)
+        gl.addWidget(btn_start, 2, 0)
+        btn_restart = QPushButton("Restart")
+        btn_restart.clicked.connect(self.restart_unit)
+        gl.addWidget(btn_restart, 2, 1)
+        btn_stop = QPushButton("Stop Now")
+        btn_stop.clicked.connect(self.stop_unit)
+        gl.addWidget(btn_stop, 2, 2)
+        layout.addWidget(auto_group)
+
+        # System Tray settings
+        tray_group = QGroupBox("🧰 System Tray")
+        hl = QHBoxLayout(tray_group)
+        self.chk_tray_on_close = QCheckBox("Minimize to tray on close")
+        self.chk_tray_on_close.setChecked(bool(getattr(self.main, 'tray_minimize_on_close', False)))
+        self.chk_tray_on_close.stateChanged.connect(self.on_tray_toggle)
+        btn_hide_now = QPushButton("Hide to tray now")
+        btn_hide_now.clicked.connect(self.main.hide_to_tray)
+        hl.addWidget(self.chk_tray_on_close)
+        hl.addStretch(1)
+        hl.addWidget(btn_hide_now)
+        layout.addWidget(tray_group)
+
+        layout.addStretch(1)
+
+    # ---- Autostart helpers ----
+    def unit_path(self) -> Path:
+        return Path.home() / ".config" / "systemd" / "user" / "rdx-control-center.service"
+
+    def install_or_update_unit(self):
+        try:
+            unit_dir = self.unit_path().parent
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            # Use the installed launcher wrapper
+            exec_path = "/usr/local/bin/rdx-control-center"
+            unit = f"""[Unit]
+Description=RDX Broadcast Control Center (GUI)
+After=default.target
+Wants=default.target
+
+[Service]
+Type=simple
+ExecStart={exec_path}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+"""
+            self.unit_path().write_text(unit, encoding="utf-8")
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+            QMessageBox.information(self, "Unit Installed", f"Installed/updated: {self.unit_path()}")
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.critical(self, "Unit Error", f"Failed to install/update unit: {e}")
+
+    def enable_unit(self):
+        try:
+            self.install_or_update_unit()
+            subprocess.run(["systemctl", "--user", "enable", "rdx-control-center"], check=False)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.critical(self, "Enable Error", f"Failed to enable: {e}")
+
+    def disable_unit(self):
+        try:
+            subprocess.run(["systemctl", "--user", "disable", "rdx-control-center"], check=False)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.critical(self, "Disable Error", f"Failed to disable: {e}")
+
+    def start_unit(self):
+        try:
+            subprocess.run(["systemctl", "--user", "start", "rdx-control-center"], check=False)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.critical(self, "Start Error", f"Failed to start: {e}")
+
+    def stop_unit(self):
+        try:
+            subprocess.run(["systemctl", "--user", "stop", "rdx-control-center"], check=False)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.critical(self, "Stop Error", f"Failed to stop: {e}")
+
+    def restart_unit(self):
+        try:
+            subprocess.run(["systemctl", "--user", "restart", "rdx-control-center"], check=False)
+            self.refresh_status()
+        except Exception as e:
+            QMessageBox.critical(self, "Restart Error", f"Failed to restart: {e}")
+
+    def refresh_status(self):
+        try:
+            enabled = subprocess.run(["systemctl", "--user", "is-enabled", "rdx-control-center"], capture_output=True, text=True)
+            active = subprocess.run(["systemctl", "--user", "is-active", "rdx-control-center"], capture_output=True, text=True)
+            en = (enabled.stdout or "").strip()
+            ac = (active.stdout or "").strip()
+            txt = f"Status: {'✅ Enabled' if en == 'enabled' else '❌ Disabled'} | {'✅ Active' if ac == 'active' else '❌ Inactive'}"
+            self.autostart_status.setText(txt)
+        except Exception:
+            self.autostart_status.setText("Status: ❓ Unknown (systemd --user not available?)")
+
+    def on_tray_toggle(self, _state):
+        self.main.tray_minimize_on_close = self.chk_tray_on_close.isChecked()
+        try:
+            self.main.save_settings()
+        except Exception:
+            pass
+
+
 class RDXBroadcastControlCenter(QMainWindow):
     """Main application window with tabbed interface"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.31")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.0")
         self.setMinimumSize(1000, 700)
-        self.setup_ui()
+    # Tray/minimize settings
+    self.tray_minimize_on_close = False
+    self._settings = {}
+    self._load_settings()
+    self.setup_ui()
+    self._setup_tray()
         
     def setup_ui(self):
         """Setup the main user interface"""
@@ -2504,19 +2917,97 @@ class RDXBroadcastControlCenter(QMainWindow):
         
         # Add remaining tabs
         self.jack_matrix = JackMatrixTab()
-        self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Matrix")
-        
+        self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
+
         # Stereo Tool Manager
         self.stereo_tool_manager = StereoToolManagerTab()
         self.tab_widget.addTab(self.stereo_tool_manager, "🎚️ Stereo Tool Manager")
 
         self.service_control = ServiceControlTab()
         self.tab_widget.addTab(self.service_control, "⚙️ Service Control")
+
+        # Settings tab
+        self.settings_tab = SettingsTab(self)
+        self.tab_widget.addTab(self.settings_tab, "🛠️ Settings")
         
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.31")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.0")
+
+    # ---- System tray ----
+    def _setup_tray(self):
+        try:
+            self.tray = QSystemTrayIcon(self)
+            # Try themed icon, fallback to default if theme not found
+            icon = QIcon.fromTheme("audio-card")
+            if icon.isNull():
+                icon = self.windowIcon() or QIcon()
+            self.tray.setIcon(icon)
+            menu = QMenu()
+            act_show = menu.addAction("Show/Hide")
+            act_quit = menu.addAction("Quit")
+            act_show.triggered.connect(self.toggle_visibility)
+            act_quit.triggered.connect(self.quit_app)
+            self.tray.setContextMenu(menu)
+            self.tray.activated.connect(lambda reason: self.toggle_visibility() if reason == QSystemTrayIcon.Trigger else None)
+            self.tray.show()
+        except Exception:
+            # Tray optional; ignore errors
+            self.tray = None
+
+    def toggle_visibility(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+    def hide_to_tray(self):
+        if self.tray:
+            self.hide()
+            self.tray.showMessage("RDX Control Center", "Running in system tray.", QSystemTrayIcon.Information, 2000)
+
+    def quit_app(self):
+        QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        if getattr(self, 'tray_minimize_on_close', False) and self.tray:
+            event.ignore()
+            self.hide_to_tray()
+        else:
+            super().closeEvent(event)
+
+    # ---- Settings persistence ----
+    def _config_dir(self) -> Path:
+        p = Path.home() / ".config" / "rdx"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return p
+
+    def _settings_file(self) -> Path:
+        return self._config_dir() / "settings.json"
+
+    def _load_settings(self):
+        try:
+            p = self._settings_file()
+            if p.exists():
+                with open(p, 'r') as f:
+                    self._settings = json.load(f)
+                self.tray_minimize_on_close = bool(self._settings.get('tray_minimize_on_close', False))
+        except Exception:
+            self._settings = {}
+
+    def save_settings(self):
+        try:
+            self._settings['tray_minimize_on_close'] = bool(self.tray_minimize_on_close)
+            with open(self._settings_file(), 'w') as f:
+                json.dump(self._settings, f, indent=2)
+        except Exception:
+            pass
 
 
 def main():
@@ -2524,7 +3015,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.31")
+    app.setApplicationVersion("3.3.0")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

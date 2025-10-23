@@ -1,5 +1,20 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.3.0 (2025-10-23)
+### Added
+- JACK Patchboard: Replaced the old grid matrix with a simple, stereo-aware patchboard. Pick a Source (stereo out) and Destination (stereo in), then Connect L/R or Disconnect. Includes a quick “Unprotect current” action.
+- Protected pairs persistence: Critical Source→Destination pairs are now saved to `~/.config/rdx/jack_protected.json` and preserved across restarts. Emergency Disconnect keeps protected pairs intact.
+- Settings tab: User-level autostart for RDX via `systemd --user` (install/enable/disable/start/stop/restart controls). Tray options including “Minimize to tray on close” and “Hide to tray now”.
+- System tray: Tray icon with Show/Hide and Quit menu; single-click toggles visibility.
+- Stereo Tool “Latest URL” fallback: Optional field to store a curated or official stable link, and a button to download directly from it. Value persisted in `~/.config/rdx/settings.json`.
+
+### Improved
+- JACK UX: Clearer L/R semantics and less clutter versus the old matrix. Auto-Connect helper attempts RD → Stereo Tool → Liquidsoap and Liquidsoap → system:playback when detected.
+
+### Notes
+- The Thimeo auto-parser remains available; if it doesn’t find artifacts on your system, the new “Latest URL” path provides a reliable one-shot alternative.
+- AAC/FLAC deep-dives are still deferred; MP3/OGG/OPUS remain solid. We’ll revisit FLAC edge cases separately.
+
 ## v3.2.31 (2025-10-23)
 ### Added
 - Stereo Tool Manager tab: manage multiple Stereo Tool instances (add from URL/file, auto-download JACK x64 from Thimeo page), set active, start/stop.
