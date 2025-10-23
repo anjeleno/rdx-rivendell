@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.24
+RDX Professional Broadcast Control Center v3.2.25
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -18,7 +18,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QGridLayout, QGroupBox, QTextEdit, QSplitter, QTabWidget,
                             QComboBox, QLineEdit, QTableWidget, QTableWidgetItem,
                             QHeaderView, QCheckBox, QSpinBox, QProgressBar,
-                            QScrollArea, QFormLayout, QDialog, QDialogButtonBox)
+                            QScrollArea, QFormLayout, QDialog, QDialogButtonBox,
+                            QSizePolicy)
 from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QIcon, QPalette
 
@@ -74,16 +75,20 @@ class StreamBuilderTab(QWidget):
         layout.addWidget(self.streams_table)
 
         # Actions (Generate/Apply)
-        actions_row = QHBoxLayout()
-        gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
-        gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
-        gen_btn.clicked.connect(self.generate_liquidsoap_config)
-        actions_row.addWidget(gen_btn)
+    actions_row = QHBoxLayout()
+    gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
+    gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
+    gen_btn.setMinimumHeight(40)
+    gen_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    gen_btn.clicked.connect(self.generate_liquidsoap_config)
+    actions_row.addWidget(gen_btn)
 
-        apply_btn = QPushButton("📡 Apply to Icecast")
-        apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
-        apply_btn.clicked.connect(self.apply_to_icecast)
-        actions_row.addWidget(apply_btn)
+    apply_btn = QPushButton("📡 Apply to Icecast")
+    apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+    apply_btn.setMinimumHeight(40)
+    apply_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    apply_btn.clicked.connect(self.apply_to_icecast)
+    actions_row.addWidget(apply_btn)
 
         actions_row.addStretch(1)
         layout.addLayout(actions_row)
@@ -312,15 +317,17 @@ output.icecast(
             kbps = bitrate.split()[0]
             return f"%mp3(bitrate={kbps})"
         elif codec in ("AAC+", "AAC"):
-            # Prefer widely-available ffmpeg-based AAC encoder.
-            # Liquidsoap expects audio_bitrate as a string (e.g., "64k").
+            # Prefer native fdkaac encoder if available; otherwise fall back to ffmpeg aac
             kbps = bitrate.split()[0]
             try:
-                int(kbps)
+                kbps_int = int(kbps)
             except Exception:
-                kbps = "64"
-            # Explicitly mark as audio encoder to satisfy Liquidsoap 2.x typing
-            return f"%ffmpeg(audio=true, video=false, format=\"adts\", audio_codec=\"aac\", audio_bitrate=\"{kbps}k\")"
+                kbps_int = 64
+            if self._has_fdkaac():
+                # fdkaac expects numeric kbps bitrate
+                return f"%fdkaac(bitrate={kbps_int})"
+            # Fallback: ffmpeg-based AAC (audio-only flags for Liquidsoap 2.x)
+            return f"%ffmpeg(audio=true, video=false, format=\"adts\", audio_codec=\"aac\", audio_bitrate=\"{kbps_int}k\")"
         elif codec == "FLAC":
             quality = bitrate.split()[1]
             return f"%flac(compression={quality})"
@@ -332,6 +339,17 @@ output.icecast(
             return f"%opus(bitrate={kbps})"
         else:
             return "%mp3(bitrate=192)"
+
+    def _has_fdkaac(self) -> bool:
+        """Return True if Liquidsoap fdkaac encoder is available."""
+        try:
+            res = subprocess.run(["liquidsoap", "-h", "encoder.fdkaac"], capture_output=True, text=True)
+            out = (res.stdout or "") + (res.stderr or "")
+            if res.returncode == 0 and "Plugin not found" not in out:
+                return True
+        except Exception:
+            pass
+        return False
             
     def apply_to_icecast(self):
         """Apply stream configuration to Icecast"""
@@ -1595,11 +1613,13 @@ class ServiceControlTab(QWidget):
             
     
     def prompt_install_ffmpeg_plugin(self) -> bool:
-        """Offer to install Liquidsoap's ffmpeg plugin via system package manager.
-        Returns True if installation was attempted (and presumed successful), False otherwise.
+        """Install Liquidsoap's ffmpeg plugin with a modal progress dialog streaming logs.
+        Returns True if installation was attempted, False otherwise.
         """
         try:
-            from PyQt5.QtWidgets import QInputDialog
+            from PyQt5.QtWidgets import QInputDialog, QDialog, QVBoxLayout
+            from PyQt5.QtCore import QProcess
+
             options = [
                 "Install from current repos",
                 "Add official Liquidsoap repo + install",
@@ -1616,18 +1636,50 @@ class ServiceControlTab(QWidget):
                 mode = "official"
             elif choice.startswith("Add vendor"):
                 mode = "vendor"
-            # Try pkexec with explicit bash to avoid exec bit / mount noexec issues
+
+            # Prepare modal dialog
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Installing FFmpeg Plugin…")
+            dlg.setModal(True)
+            v = QVBoxLayout(dlg)
+            log_view = QTextEdit()
+            log_view.setReadOnly(True)
+            log_view.setMinimumSize(600, 320)
+            v.addWidget(log_view)
+
+            # Start process with pkexec /bin/bash installer
             installer = "/usr/share/rdx/install-liquidsoap-plugin.sh"
-            cmd = ["pkexec", "/bin/bash", installer, mode]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode != 0:
-                out = (res.stdout or "") + ("\n" + res.stderr if res.stderr else "")
+            proc = QProcess(dlg)
+            proc.setProgram("pkexec")
+            proc.setArguments(["/bin/bash", installer, mode])
+            proc.setProcessChannelMode(QProcess.MergedChannels)
+
+            def append_output():
+                data = proc.readAll().data().decode(errors="replace")
+                if data:
+                    log_view.append(data.rstrip())
+            proc.readyRead.connect(append_output)
+
+            finished_ok = {"code": None}
+
+            def on_finished(code, _status):
+                finished_ok["code"] = int(code)
+                dlg.accept()
+
+            proc.finished.connect(on_finished)
+            proc.start()
+            dlg.exec_()
+
+            exit_code = finished_ok["code"] if finished_ok["code"] is not None else 1
+            if exit_code != 0:
+                tail = "\n".join(log_view.toPlainText().splitlines()[-50:])
                 QMessageBox.critical(self, "Install Failed",
-                                     f"Failed to install FFmpeg plugin.\n\nOutput:\n{out}\n\n"
-                                     "Tip: Ensure a PolicyKit authentication agent is running and that the file is executable.")
+                                     f"Failed to install FFmpeg plugin (exit {exit_code}).\n\nLast output:\n{tail}\n\n"
+                                     "Tip: Ensure a PolicyKit authentication agent is running.")
                 return False
+
             QMessageBox.information(self, "Install Complete",
-                                    "FFmpeg plugin installation attempted. Rechecking availability...")
+                                    "FFmpeg plugin installation attempted. Rechecking availability…")
             return True
         except Exception as e:
             QMessageBox.critical(self, "Install Error", f"Error during installation: {e}")

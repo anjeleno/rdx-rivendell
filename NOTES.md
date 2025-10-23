@@ -619,3 +619,313 @@ Upon launching RDX for the chain to work properly, services need to start in the
 - Jack (should detect and mount Rivendell)
 - Liquidsoap
 - Stereo Tool
+
+
+
+
+
+v3.2..24
+stream builder tab:
+generate liquidsoap config and apply to icecast buttons are back, but should be the same size as generate icecast.xml and prepare for deployment buttons on icecast management tab.
+
+Tried to start liquidosap pn service control tab and got FFmpeg missing error. 
+
+The FFmpeg encoder plugin for Liquidsoap is not available.
+
+Install one of the following (varies by distro):
+  sudo apt install liquidsoap-plugin-ffmpeg
+  sudo apt install liquidsoap-plugin-all
+  sudo apt install liquidsoap-plugin-extra
+
+Then try starting Liquidsoap again.
+
+Selected Official repo and authenticated in popup. And because there was no progress indicator, RDX felt like it was hung up until it finally displayed the following in a popup:
+Failed to install FFmpeg plugin.
+
+Output:
+Hit:1 http://us.archive.ubuntu.com/ubuntu jammy InRelease
+Get:2 http://us.archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:3 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:4 https://pkgs.tailscale.com/stable/ubuntu jammy InRelease
+Get:5 http://us.archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:6 http://us.archive.ubuntu.com/ubuntu jammy-updates/main i386 Packages [904 kB]
+Get:7 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [3,027 kB]
+Get:8 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [2,770 kB]
+Get:9 http://us.archive.ubuntu.com/ubuntu jammy-updates/main amd64 c-n-f Metadata [19.0 kB]
+Get:10 http://us.archive.ubuntu.com/ubuntu jammy-updates/universe i386 Packages [790 kB]
+Get:11 http://us.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1,242 kB]
+Get:12 http://us.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 c-n-f Metadata [29.8 kB]
+Get:13 http://security.ubuntu.com/ubuntu jammy-security/main i386 Packages [720 kB]
+Get:14 http://security.ubuntu.com/ubuntu jammy-security/main Translation-en [403 kB]
+Get:15 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [4,613 kB]
+Get:16 http://security.ubuntu.com/ubuntu jammy-security/restricted Translation-en [855 kB]
+Get:17 http://security.ubuntu.com/ubuntu jammy-security/universe i386 Packages [680 kB]
+Get:18 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1,007 kB]
+Get:19 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 c-n-f Metadata [22.3 kB]
+Fetched 17.5 MB in 8s (2,260 kB/s)
+Reading package lists...
+[rdx-install] Enabling official Liquidsoap PPA (savonet/ppa)
+ERROR: ppa 'savonet/ppa' not found (use --login if private)
+Hit:1 http://us.archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://us.archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:3 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:4 http://us.archive.ubuntu.com/ubuntu jammy-backports InRelease
+Get:5 https://pkgs.tailscale.com/stable/ubuntu jammy InRelease
+Fetched 6,581 B in 1s (5,210 B/s)
+Reading package lists...
+
+
+Tip: Ensure a PolicyKit authentication agent is running and that the file is executable.
+
+Tried again with Paravel repo and got:
+Failed to install FFmpeg plugin.
+
+Output:
+Hit:1 http://us.archive.ubuntu.com/ubuntu jammy InRelease
+Hit:2 http://security.ubuntu.com/ubuntu jammy-security InRelease
+Hit:3 http://us.archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://us.archive.ubuntu.com/ubuntu jammy-backports InRelease
+Get:5 https://pkgs.tailscale.com/stable/ubuntu jammy InRelease
+Fetched 6,581 B in 2s (4,376 B/s)
+Reading package lists...
+[rdx-install] Vendor repo not configured. Skipping.
+
+
+Tip: Ensure a PolicyKit authentication agent is running and that the file is executable.
+
+We need to resolve this in an efficient way for *any user* on *any system* running Ubuntu 22.04/24.04 and Rivendell 4+ automatically. 
+
+Here's what chatgpt had to say. Can you figure out how to make this happen in the background when a user installs RDX on their system?
+
+Liquidsoap on Ubuntu 22.04 keeps complainging about missing dependancies for aac+ I know the dependancies exisit for both 22.04 and 24.04. Please help
+
+Got it, dude 👍 — this is a *super common* headache when compiling or running **Liquidsoap** with **AAC+ (HE-AAC)** support on Ubuntu. Let’s get this fixed properly.
+
+---
+
+### 🧩 The Root of the Problem
+
+Liquidsoap’s AAC+ support depends on **FAAC** or **FDK-AAC**, but:
+
+* Ubuntu’s default packages often **don’t include AAC codecs** (due to licensing restrictions).
+* Even if you install the libs manually, Liquidsoap might have been built **without AAC support**, so it doesn’t see them.
+
+---
+
+### ✅ Step-by-Step Fix
+
+#### 1. Confirm the libraries exist
+
+Run these to check if your system already has the right AAC libs:
+
+```bash
+dpkg -l | grep -E 'faac|fdk-aac|libavcodec'
+```
+
+If you don’t see them, install:
+
+```bash
+sudo apt update
+sudo apt install libfdk-aac2 libfdk-aac-dev faac faad libfaad-dev libavcodec-extra
+```
+
+---
+
+#### 2. Check how Liquidsoap was installed
+
+If you installed via `apt install liquidsoap`, Ubuntu’s repo version is **stripped of non-free codecs** (no AAC, MP3, etc).
+
+So the fix is to reinstall using **OPAM** (the official way to get full codec support):
+
+```bash
+sudo apt install opam m4 git pkg-config libtag1-dev libfdk-aac-dev libmad0-dev libmp3lame-dev libvorbis-dev libogg-dev libflac-dev libpulse-dev libao-dev libsndfile1-dev
+```
+
+Then initialize OPAM and install Liquidsoap with all the plugins:
+
+```bash
+opam init
+eval $(opam env)
+opam install depext
+opam depext liquidsoap
+opam install liquidsoap
+```
+
+This version will compile with **AAC+, MP3, OGG, and more** — depending on what you have installed.
+
+---
+
+#### 3. Test codec availability
+
+Once installed, check available encoders:
+
+```bash
+liquidsoap --list-encoders | grep aac
+```
+
+You should see something like:
+
+```
+aacplus (fdk-aac)
+aac (faac)
+```
+
+If you see those — you’re good.
+If not, we can rebuild Liquidsoap with a specific flag.
+
+---
+
+#### 4. (Optional) Force AAC+ rebuild
+
+If you specifically want **fdk-aac** support:
+
+```bash
+opam reinstall liquidsoap --with-fdk-aac
+```
+
+Or to rebuild with full support:
+
+```bash
+opam reinstall liquidsoap --with-all
+```
+
+---
+
+#### 5. Verify in Liquidsoap
+
+Run a quick test file:
+
+```bash
+liquidsoap
+```
+
+Then inside the REPL:
+
+```liquidsoap
+output.file(%fdkaac, "test.aac", sine())
+```
+
+If it runs and creates a `.aac` file, the codec is working ✅
+
+---
+
+Would you like me to show you the *minimal working config* (for streaming to Icecast with AAC+) once this is working?
+It’s handy for confirming the encoder actually loads in real-world use.
+
+
+dpkg -l | grep -E 'faac|fdk-aac|libavcodec'
+ii  libavcodec58:amd64                       7:4.4.2-0ubuntu0.22.04.1                    amd64        FFmpeg library with de/encoders for audio/video codecs - runtime files
+
+
+Perfect — that explains the issue. You’ve got **`libavcodec`**, but **no AAC encoder libraries** (`libfdk-aac` or `faac`) are installed.
+
+Ubuntu **removes** them from the main repos due to licensing, so Liquidsoap can’t find any valid AAC encoders even though FFmpeg itself supports decoding AAC.
+
+Let’s fix that cleanly 👇
+
+---
+
+### 🧰 Step 1: Enable “Multiverse” Repos (for non-free codecs)
+
+Make sure your system allows those packages:
+
+```bash
+sudo add-apt-repository multiverse
+sudo apt update
+```
+
+---
+
+### 🎧 Step 2: Install AAC Encoder Libraries
+
+Now grab both FAAC and FDK-AAC:
+
+```bash
+sudo apt install libfdk-aac-dev libfdk-aac2 faac libfaac-dev
+```
+
+You can check they installed with:
+
+```bash
+dpkg -l | grep -E 'faac|fdk-aac'
+```
+
+You should see entries like:
+
+```
+ii  libfdk-aac2:amd64   ...
+ii  libfdk-aac-dev:amd64 ...
+ii  faac                 ...
+```
+
+---
+
+### 🧱 Step 3: Check Your Liquidsoap Installation
+
+Run:
+
+```bash
+liquidsoap --version
+```
+
+If it says something like `Built with support for ...` and **does not** include `fdk-aac` or `faac`, then your current build is missing those features.
+That’s because Ubuntu’s default Liquidsoap build **disables proprietary codecs**.
+
+---
+
+### 🚀 Step 4: Reinstall Liquidsoap via OPAM (full codec support)
+
+This is the reliable way.
+
+Install OPAM and build dependencies:
+
+```bash
+sudo apt install opam m4 pkg-config git libtag1-dev libfdk-aac-dev libmad0-dev libmp3lame-dev libvorbis-dev libogg-dev libflac-dev libpulse-dev libao-dev libsndfile1-dev
+```
+
+Then:
+
+```bash
+opam init
+eval $(opam env)
+opam install depext
+opam depext liquidsoap
+opam install liquidsoap
+```
+
+After it’s done:
+
+```bash
+liquidsoap --list-encoders | grep aac
+```
+
+You should now see something like:
+
+```
+aacplus (fdk-aac)
+aac (faac)
+```
+
+That means you’re fully ready to stream or transcode to AAC+.
+
+---
+
+### ⚡ Step 5 (optional): Quick verification
+
+Try a minimal test:
+
+```bash
+liquidsoap
+```
+
+Then inside the REPL:
+
+```liquidsoap
+output.file(%fdkaac, "test.aac", sine())
+```
+
+If it runs and saves an `.aac` file → success 🎉
+
+---
+
+Would you like me to show you a working **Icecast AAC+ streaming config** next (so you can verify end-to-end playback)?

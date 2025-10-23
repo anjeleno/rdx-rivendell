@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.2.24"
+PACKAGE_VERSION="3.2.25"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -418,6 +418,32 @@ apt_install() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
 }
 
+# Append all output to log file for postmortem
+LOG_FILE="/var/log/rdx-plugin-install.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+detect_series() {
+    if have_cmd lsb_release; then
+        lsb_release -cs
+    elif [ -f /etc/os-release ]; then
+        . /etc/os-release; echo "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+    else
+        echo "jammy"
+    fi
+}
+
+enable_universe_multiverse() {
+    if have_cmd add-apt-repository; then
+        log "Ensuring 'universe' and 'multiverse' are enabled"
+        add-apt-repository -y universe || true
+        add-apt-repository -y multiverse || true
+    else
+        apt_install software-properties-common || true
+        add-apt-repository -y universe || true
+        add-apt-repository -y multiverse || true
+    fi
+}
+
 try_install_plugins_from_current() {
     local pkgs=(liquidsoap-plugin-ffmpeg liquidsoap-plugin-all liquidsoap-plugin-extra)
     local ok=1
@@ -431,16 +457,35 @@ try_install_plugins_from_current() {
 }
 
 add_official_repo() {
-    if have_cmd add-apt-repository; then
-        :
-    else
-        apt_install software-properties-common || true
-    fi
+    apt_install ca-certificates gnupg lsb-release software-properties-common || true
+    local series
+    series=$(detect_series)
+    log "Detected series: $series"
+
     if have_cmd add-apt-repository; then
         log "Enabling official Liquidsoap PPA (savonet/ppa)"
-        add-apt-repository -y ppa:savonet/ppa || true
+        if add-apt-repository -y ppa:savonet/ppa; then
+            apt-get update || true
+            return 0
+        else
+            log "add-apt-repository failed; falling back to manual source setup"
+        fi
+    fi
+
+    # Manual fallback: add PPA sources list and import key via keyserver
+    local list="/etc/apt/sources.list.d/savonet-ubuntu-ppa-${series}.list"
+    echo "deb http://ppa.launchpad.net/savonet/ppa/ubuntu ${series} main" > "$list"
+    echo "deb-src http://ppa.launchpad.net/savonet/ppa/ubuntu ${series} main" >> "$list"
+    # Try to fetch key from keyserver
+    if have_cmd gpg; then
+        log "Importing PPA key from keyserver"
+        apt_install dirmngr || true
+        # Try common keyservers
+        gpg --keyserver keyserver.ubuntu.com --recv-keys 0x5ABCE6D5740500DB || \
+        gpg --keyserver hkps://keys.openpgp.org --recv-keys 0x5ABCE6D5740500DB || true
+        gpg --export 0x5ABCE6D5740500DB | tee /etc/apt/trusted.gpg.d/savonet-ppa.gpg >/dev/null || true
     else
-        log "add-apt-repository not available; skipping PPA enable."
+        log "gpg not available; skipping explicit key import (may rely on system defaults)"
     fi
     apt-get update || true
 }
@@ -466,6 +511,7 @@ main() {
         exit 1
     fi
     # Ensure apt cache is fresh
+    enable_universe_multiverse || true
     apt-get update || true
 
     if check_ffmpeg_plugin; then

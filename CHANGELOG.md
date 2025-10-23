@@ -1,5 +1,19 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.25 (2025-10-22)
+### Improved
+- Stream Builder: action buttons now match Icecast Management button sizing (consistent min height and expanding width)
+- In-app FFmpeg plugin installer shows a live progress dialog (no more “hung” feeling), streaming logs during installation
+
+### Fixed
+- Liquidsoap AAC generation prefers native `%fdkaac` when available; falls back to `%ffmpeg` AAC automatically
+
+### Packaging
+- Hardened FFmpeg plugin installer helper:
+  - Enables `universe`/`multiverse`
+  - Logs to `/var/log/rdx-plugin-install.log`
+  - Robust fallback when `add-apt-repository` fails for `savonet/ppa` (manual source + key import), then retries install
+
 ## v3.2.24 (2025-10-22)
 ### Fixed
 - Startup crash on some environments: "QWidget: Must construct a QApplication before a QWidget"
