@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.30
+RDX Professional Broadcast Control Center v3.2.31
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -22,6 +22,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QSizePolicy)
 from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont, QIcon, QPalette
+import urllib.request
+import shutil
 
 class StreamBuilderTab(QWidget):
     """Tab 1: Stream Builder - Create and manage streaming configurations"""
@@ -143,7 +145,6 @@ class StreamBuilderTab(QWidget):
         self.description_input.clear()
 
         self.status_text.append(f"✅ Added stream: {codec} {bitrate} → {mount}")
-        
     def refresh_streams_table(self):
         """Refresh the streams table"""
         self.streams_table.setRowCount(len(self.streams))
@@ -469,14 +470,18 @@ class IcecastManagementTab(QWidget):
         # Configuration management
         config_group = QGroupBox("📄 Configuration Management")
         config_layout = QHBoxLayout(config_group)
-        
+
         generate_config_btn = QPushButton("🔧 GENERATE ICECAST.XML")
         generate_config_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
+        generate_config_btn.setMinimumHeight(40)
+        generate_config_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         generate_config_btn.clicked.connect(self.generate_icecast_config)
         config_layout.addWidget(generate_config_btn)
         
         apply_config_btn = QPushButton("� PREPARE FOR DEPLOYMENT")
         apply_config_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
+        apply_config_btn.setMinimumHeight(40)
+        apply_config_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         apply_config_btn.clicked.connect(self.apply_icecast_config)
         config_layout.addWidget(apply_config_btn)
         
@@ -1146,7 +1151,8 @@ class ServiceControlTab(QWidget):
         super().__init__()
         self.services = {
             'jack': {'name': 'JACK Audio', 'systemd': 'jack', 'status': 'unknown', 'user_service': False},
-            'stereo_tool': {'name': 'Stereo Tool', 'systemd': 'stereo-tool', 'status': 'unknown', 'user_service': False},
+            # Use a per-user unit that points to the currently active Stereo Tool instance
+            'stereo_tool': {'name': 'Stereo Tool', 'systemd': 'rdx-stereotool-active', 'status': 'unknown', 'user_service': True},
             'liquidsoap': {'name': 'Liquidsoap', 'systemd': 'liquidsoap', 'status': 'unknown', 'user_service': True},
             'icecast': {'name': 'Icecast', 'systemd': 'icecast2', 'status': 'unknown', 'user_service': False}
         }
@@ -1198,6 +1204,17 @@ class ServiceControlTab(QWidget):
             config_btn.clicked.connect(lambda checked, s=service_key: self.configure_service(s))
             services_layout.addWidget(config_btn, row, 5)
 
+            # Stereo Tool extras: Logs button and active status label
+            if service_key == 'stereo_tool':
+                logs_btn = QPushButton("📄 Logs")
+                logs_btn.setStyleSheet("QPushButton { background-color: #8e44ad; color: white; }")
+                logs_btn.clicked.connect(self.open_stereotool_logs)
+                services_layout.addWidget(logs_btn, row, 6)
+
+                self.stereotool_active_label = QLabel("Active: —")
+                self.stereotool_active_label.setStyleSheet("QLabel { color: #7f8c8d; font-size: 10px; }")
+                services_layout.addWidget(self.stereotool_active_label, row, 7)
+
             # Optional, compact capability line for Liquidsoap encoders
             if service_key == 'liquidsoap':
                 self.liquidsoap_encoders_label = QLabel("")
@@ -1239,8 +1256,8 @@ class ServiceControlTab(QWidget):
         deps_text = QLabel("""
 🔗 Service Startup Order:
 1. JACK Audio (Foundation)
-2. Stereo Tool (Audio Processing)  
-3. Liquidsoap (Stream Generation)
+2. Liquidsoap (Stream Generation)
+3. Stereo Tool (Audio Processing)
 4. Icecast (Stream Server)
 
 ⚠️ Dependencies: Each service depends on the previous one running correctly.
@@ -1290,6 +1307,22 @@ class ServiceControlTab(QWidget):
         # Initial one-time probe for Liquidsoap encoder capabilities
         self._last_liq_probe_ts = 0.0
         self.update_liquidsoap_encoders_label(force=True)
+
+    def _st_path_root(self) -> Path:
+        return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
+
+    def _active_symlink(self) -> Path:
+        return self._st_path_root() / "active"
+
+    def _active_stereotool_display(self) -> str:
+        try:
+            link = self._active_symlink()
+            if link.is_symlink():
+                target = os.path.realpath(str(link))
+                return os.path.basename(target)
+        except Exception:
+            pass
+        return "—"
 
     # ---- Liquidsoap path/env helpers ------------------------------------
     def _liquidsoap_bin(self) -> str:
@@ -1424,6 +1457,9 @@ class ServiceControlTab(QWidget):
                     else:
                         status_label.setText("❌ Stopped")
                         status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                # Update Stereo Tool active info line
+                if service_key == 'stereo_tool' and hasattr(self, 'stereotool_active_label'):
+                    self.stereotool_active_label.setText(f"Active: {self._active_stereotool_display()}")
             except Exception:
                 status_label.setText("❓ Unknown")
                 status_label.setStyleSheet("QLabel { color: #95a5a6; }")
@@ -1986,13 +2022,32 @@ verify
         """Start all services in correct order"""
         reply = QMessageBox.question(self, "Start All Services", 
                                    "This will start all broadcast services in the correct order:\n"
-                                   "JACK → Stereo Tool → Liquidsoap → Icecast\n\n"
+                                   "JACK → Liquidsoap → Stereo Tool → Icecast\n\n"
                                    "Continue?",
                                    QMessageBox.Yes | QMessageBox.No)
-        
+
         if reply == QMessageBox.Yes:
-            QMessageBox.information(self, "Starting Services", 
-                                  "Starting all services in dependency order...")
+            # Start in sequence with simple checks
+            try:
+                # JACK
+                jack_ok = subprocess.run(["jack_lsp"], capture_output=True).returncode == 0
+                if not jack_ok:
+                    self.start_service('jack')
+                    time.sleep(1)
+
+                # Liquidsoap (needs JACK client available)
+                self.start_service('liquidsoap')
+                time.sleep(1)
+
+                # Stereo Tool via per-user systemd unit
+                self._ensure_stereotool_unit()
+                self.start_service('stereo_tool')
+                time.sleep(1)
+
+                # Icecast
+                self.start_service('icecast')
+            except Exception as e:
+                QMessageBox.critical(self, "Start All Error", f"Failed to start all services: {e}")
             
     def stop_all_services(self):
         """Stop all services in reverse order"""
@@ -2019,13 +2074,398 @@ verify
             QMessageBox.information(self, "Emergency Stop", 
                                   "🚨 All broadcast services stopped immediately!")
 
+    def open_stereotool_logs(self):
+        """Open a dialog with the last 500 lines of the Stereo Tool user-service log."""
+        try:
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Stereo Tool Logs (rdx-stereotool-active)")
+            v = QVBoxLayout(dlg)
+            txt = QTextEdit()
+            txt.setReadOnly(True)
+            v.addWidget(txt)
+            # Fetch logs via journalctl
+            res = subprocess.run(["journalctl", "--user", "-u", "rdx-stereotool-active", "-n", "500", "--no-pager"],
+                                 capture_output=True, text=True)
+            output = (res.stdout or res.stderr or "No logs available").strip()
+            txt.setPlainText(output)
+            dlg.resize(800, 500)
+            dlg.exec_()
+        except Exception as e:
+            QMessageBox.critical(self, "Logs Error", f"Could not open logs: {e}")
+
+    # ---- Stereo Tool helpers (systemd user unit and active symlink) ----
+    def _st_path_root(self) -> Path:
+        return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
+
+    def _active_symlink(self) -> Path:
+        return self._st_path_root() / "active"
+
+    def _ensure_stereotool_unit(self):
+        """Create/update per-user systemd unit that runs the active Stereo Tool binary.
+        Unit: rdx-stereotool-active.service under ~/.config/systemd/user
+        """
+        try:
+            root = self._st_path_root()
+            root.mkdir(parents=True, exist_ok=True)
+            active = self._active_symlink()
+            # If no active binary, do nothing (UI will guide to Stereo Tool Manager tab)
+            if not active.exists():
+                return
+            unit_dir = Path.home() / ".config" / "systemd" / "user"
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            unit_path = unit_dir / "rdx-stereotool-active.service"
+            # Minimal ExecStart; Stereo Tool JACK GUI typically self-manages JACK ports
+            unit = f"""[Unit]
+Description=RDX Stereo Tool (active instance)
+After=default.target
+Wants=default.target
+
+[Service]
+Type=simple
+ExecStart={str(active)}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+"""
+            unit_path.write_text(unit, encoding="utf-8")
+            # Reload user daemon to pick up changes
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+            # Enable unit so it can be started at login if desired
+            subprocess.run(["systemctl", "--user", "enable", "rdx-stereotool-active"], check=False)
+        except Exception:
+            # Non-fatal; Service Control will still allow manual start attempts
+            pass
+
+
+class StereoToolManagerTab(QWidget):
+    """Tab: Stereo Tool Manager - manage multiple versions and active instance.
+    Features:
+    - Add instance from URL or local file
+    - Download helper to fetch Linux JACK x64 artifact from Thimeo site
+    - Manage active instance via symlink
+    - Generate per-user systemd unit for active instance
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.instances = []
+        self.setup_ui()
+        self._load_instances()
+        self._refresh_table()
+
+    def _root(self) -> Path:
+        return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
+
+    def _instances_file(self) -> Path:
+        return self._root() / "stereotool_instances.json"
+
+    def _active_link(self) -> Path:
+        return self._root() / "active"
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Actions row
+        actions = QHBoxLayout()
+        btn_add_url = QPushButton("⬇️ Add from URL")
+        btn_add_url.clicked.connect(self.add_from_url)
+        actions.addWidget(btn_add_url)
+
+        btn_add_file = QPushButton("📦 Add from File")
+        btn_add_file.clicked.connect(self.add_from_file)
+        actions.addWidget(btn_add_file)
+
+        btn_download = QPushButton("🌐 Download JACK x64 (Auto)")
+        btn_download.clicked.connect(self.download_latest)
+        actions.addWidget(btn_download)
+
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
+        # Table of instances
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["Name", "Version", "Path", "Active", "Actions"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.table)
+
+        # Status area
+        self.status = QLabel("")
+        layout.addWidget(self.status)
+
+        # Helper text
+        help_box = QGroupBox("About Stereo Tool management")
+        hl = QVBoxLayout(help_box)
+        hl.addWidget(QLabel("RDX stores Stereo Tool under ~/.config/rdx/processing/stereotool and switches the active version using a symlink. A per-user systemd unit runs the active instance."))
+        layout.addWidget(help_box)
+
+    def _refresh_table(self):
+        self.table.setRowCount(len(self.instances))
+        active = self._active_link()
+        active_target = None
+        try:
+            if active.is_symlink():
+                active_target = os.path.realpath(str(active))
+        except Exception:
+            active_target = None
+        for i, inst in enumerate(self.instances):
+            self.table.setItem(i, 0, QTableWidgetItem(inst.get('name', ''))) 
+            self.table.setItem(i, 1, QTableWidgetItem(inst.get('version', ''))) 
+            self.table.setItem(i, 2, QTableWidgetItem(inst.get('path', ''))) 
+            is_active = (active_target == inst.get('path'))
+            self.table.setItem(i, 3, QTableWidgetItem("Yes" if is_active else "No"))
+            # Actions
+            w = QWidget()
+            h = QHBoxLayout(w)
+            h.setContentsMargins(0,0,0,0)
+            btn_act = QPushButton("Activate")
+            btn_act.clicked.connect(lambda checked, idx=i: self.activate(idx))
+            h.addWidget(btn_act)
+            btn_start = QPushButton("Start")
+            btn_start.clicked.connect(lambda checked, idx=i: self.start(idx))
+            h.addWidget(btn_start)
+            btn_stop = QPushButton("Stop")
+            btn_stop.clicked.connect(lambda checked, idx=i: self.stop(idx))
+            h.addWidget(btn_stop)
+            btn_rm = QPushButton("Remove")
+            btn_rm.clicked.connect(lambda checked, idx=i: self.remove(idx))
+            h.addWidget(btn_rm)
+            h.addStretch(1)
+            self.table.setCellWidget(i, 4, w)
+
+    def _save_instances(self):
+        try:
+            self._root().mkdir(parents=True, exist_ok=True)
+            with open(self._instances_file(), 'w') as f:
+                json.dump(self.instances, f, indent=2)
+        except Exception as e:
+            self.status.setText(f"⚠️ Could not save instances: {e}")
+
+    def _load_instances(self):
+        try:
+            p = self._instances_file()
+            if p.exists():
+                with open(p, 'r') as f:
+                    self.instances = json.load(f)
+            else:
+                self.instances = []
+        except Exception as e:
+            self.instances = []
+            self.status.setText(f"⚠️ Could not load instances: {e}")
+
+    def add_from_url(self):
+        try:
+            from PyQt5.QtWidgets import QInputDialog
+            url, ok = QInputDialog.getText(self, "Add from URL", "Direct download URL (.tar.gz/.zip/.run):")
+            if not ok or not url.strip():
+                return
+            self._root().mkdir(parents=True, exist_ok=True)
+            dest = self._root() / os.path.basename(url)
+            self.status.setText(f"Downloading {url} → {dest}…")
+            urllib.request.urlretrieve(url, str(dest))
+            # If it's a plain binary, make executable; otherwise leave as archive
+            if dest.suffix == '' or dest.suffix == '.bin':
+                dest.chmod(0o755)
+                self._add_instance_record(name=dest.name, path=str(dest), version=self._guess_version(dest.name))
+            else:
+                self._add_instance_record(name=dest.name, path=str(dest), version=self._guess_version(dest.name))
+            self._save_instances()
+            self._refresh_table()
+            self.status.setText(f"✅ Added: {dest}")
+        except Exception as e:
+            QMessageBox.critical(self, "Download Error", f"Failed to download: {e}")
+
+    def add_from_file(self):
+        try:
+            from PyQt5.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(self, "Select Stereo Tool binary or archive", str(Path.home()))
+            if not path:
+                return
+            src = Path(path)
+            self._root().mkdir(parents=True, exist_ok=True)
+            dest = self._root() / src.name
+            shutil.copy2(str(src), str(dest))
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
+            self._add_instance_record(name=dest.name, path=str(dest), version=self._guess_version(dest.name))
+            self._save_instances()
+            self._refresh_table()
+            self.status.setText(f"✅ Added: {dest}")
+        except Exception as e:
+            QMessageBox.critical(self, "Add Error", f"Failed to add file: {e}")
+
+    def download_latest(self):
+        """Fetch Thimeo downloads page, find Linux JACK x64 artifacts, and download one.
+        More robust parser: collects all hrefs, filters by keywords, lets user pick if multiple.
+        """
+        try:
+            from urllib.parse import urljoin
+            from PyQt5.QtWidgets import QInputDialog
+            self._root().mkdir(parents=True, exist_ok=True)
+            base = "https://www.thimeo.com/stereo-tool/download/"
+            self.status.setText("Fetching Thimeo downloads page…")
+            html = urllib.request.urlopen(base, timeout=20).read().decode("utf-8", errors="ignore")
+            # Collect all hrefs
+            links = re.findall(r'href=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
+            candidates = []
+            for href in links:
+                href_l = href.lower()
+                if not href_l.startswith("http"):
+                    full = urljoin(base, href)
+                else:
+                    full = href
+                # Heuristics for Linux JACK x64 artifacts
+                if all(k in href_l for k in ["linux", "jack"]) and any(k in href_l for k in ["64", "x64", "amd64"]):
+                    if any(href_l.endswith(ext) for ext in [".run", ".zip", ".tar.gz", ".tgz", ".tar.xz"]) or "stereo_tool" in href_l:
+                        candidates.append(full)
+            # Deduplicate while preserving order
+            seen = set()
+            unique = []
+            for c in candidates:
+                if c not in seen:
+                    unique.append(c)
+                    seen.add(c)
+            if not unique:
+                raise RuntimeError("No Linux JACK x64 candidates found on page.")
+            pick = unique[0]
+            if len(unique) > 1:
+                item, ok = QInputDialog.getItem(self, "Select Artifact", "Choose a Stereo Tool artifact to download:", unique, 0, False)
+                if not ok or not item:
+                    return
+                pick = item
+            dest = self._root() / os.path.basename(pick)
+            self.status.setText(f"Downloading {pick} → {dest}…")
+            urllib.request.urlretrieve(pick, str(dest))
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
+            self._add_instance_record(name=dest.name, path=str(dest), version=self._guess_version(dest.name))
+            self._save_instances()
+            self._refresh_table()
+            self.status.setText(f"✅ Downloaded: {dest}")
+        except Exception as e:
+            QMessageBox.warning(self, "Auto-download failed",
+                                f"Could not auto-detect Linux JACK x64 artifact.\n{e}\n\n"
+                                "Please use 'Add from URL' or 'Add from File'.")
+
+    def _add_instance_record(self, name: str, path: str, version: str = ""):
+        self.instances.append({
+            "name": name,
+            "path": path,
+            "version": version,
+        })
+
+    def _guess_version(self, name: str) -> str:
+        m = re.search(r"([0-9]{3,4,5})", name)
+        return m.group(1) if m else ""
+
+    def activate(self, idx: int):
+        try:
+            inst = self.instances[idx]
+            target = Path(inst.get('path', ''))
+            if not target.exists():
+                QMessageBox.warning(self, "Missing File", f"Binary not found: {target}")
+                return
+            root = self._root()
+            root.mkdir(parents=True, exist_ok=True)
+            link = self._active_link()
+            if link.exists() or link.is_symlink():
+                try:
+                    link.unlink()
+                except Exception:
+                    pass
+            os.symlink(str(target), str(link))
+            # Ensure the per-user unit is created/updated
+            try:
+                # Reuse helper from ServiceControlTab if available
+                parent = self.parent()
+                while parent and not isinstance(parent, ServiceControlTab):
+                    parent = parent.parent()
+                # Even if not found, we can write the unit here too
+            except Exception:
+                pass
+            # Write unit file
+            unit_dir = Path.home() / ".config" / "systemd" / "user"
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            unit_path = unit_dir / "rdx-stereotool-active.service"
+            unit = f"""[Unit]
+Description=RDX Stereo Tool (active instance)
+After=default.target
+Wants=default.target
+
+[Service]
+Type=simple
+ExecStart={str(link)}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+"""
+            unit_path.write_text(unit, encoding="utf-8")
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+            subprocess.run(["systemctl", "--user", "enable", "rdx-stereotool-active"], check=False)
+            self._refresh_table()
+            QMessageBox.information(self, "Activated", f"Active Stereo Tool set to: {target}")
+        except Exception as e:
+            QMessageBox.critical(self, "Activate Error", f"Failed to activate: {e}")
+
+    def start(self, idx: int):
+        try:
+            # Ensure unit exists
+            unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-stereotool-active.service"
+            if not unit_path.exists():
+                self.activate(idx)
+            subprocess.run(["systemctl", "--user", "start", "rdx-stereotool-active"], check=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Start Error", f"Failed to start: {e}")
+
+    def stop(self, idx: int):
+        try:
+            subprocess.run(["systemctl", "--user", "stop", "rdx-stereotool-active"], check=False)
+        except Exception as e:
+            QMessageBox.critical(self, "Stop Error", f"Failed to stop: {e}")
+
+    def remove(self, idx: int):
+        try:
+            inst = self.instances[idx]
+            path = Path(inst.get('path', ''))
+            # Avoid deleting if it's the active symlink target
+            active_target = None
+            try:
+                if self._active_link().is_symlink():
+                    active_target = os.path.realpath(str(self._active_link()))
+            except Exception:
+                active_target = None
+            if active_target and str(path) == active_target:
+                QMessageBox.warning(self, "In Use", "This instance is active. Deactivate first.")
+                return
+            # Remove file
+            try:
+                if path.exists():
+                    path.unlink()
+            except Exception:
+                pass
+            # Remove from list
+            del self.instances[idx]
+            self._save_instances()
+            self._refresh_table()
+        except Exception as e:
+            QMessageBox.critical(self, "Remove Error", f"Failed to remove: {e}")
+
 
 class RDXBroadcastControlCenter(QMainWindow):
     """Main application window with tabbed interface"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.30")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.31")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -2066,13 +2506,17 @@ class RDXBroadcastControlCenter(QMainWindow):
         self.jack_matrix = JackMatrixTab()
         self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Matrix")
         
+        # Stereo Tool Manager
+        self.stereo_tool_manager = StereoToolManagerTab()
+        self.tab_widget.addTab(self.stereo_tool_manager, "🎚️ Stereo Tool Manager")
+
         self.service_control = ServiceControlTab()
         self.tab_widget.addTab(self.service_control, "⚙️ Service Control")
         
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.30")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.31")
 
 
 def main():
@@ -2080,7 +2524,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.30")
+    app.setApplicationVersion("3.2.31")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

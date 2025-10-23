@@ -1,5 +1,17 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.31 (2025-10-23)
+### Added
+- Stereo Tool Manager tab: manage multiple Stereo Tool instances (add from URL/file, auto-download JACK x64 from Thimeo page), set active, start/stop.
+- Per-user systemd unit: `rdx-stereotool-active.service` is generated under `~/.config/systemd/user` and points to the active instance via a symlink at `~/.config/rdx/processing/stereotool/active`.
+
+### Improved
+- Start order helper: “Start All Services” now sequences JACK → Liquidsoap → Stereo Tool → Icecast with simple readiness checks.
+- UI consistency: Icecast Management “Generate/Prepare” buttons now match Stream Builder button sizing (min height + expanding width).
+
+### Notes
+- AAC/FLAC reliability work remains queued; current release focuses on Stereo Tool integration scaffolding.
+
 ## v3.2.30 (2025-10-23)
 ### Fixed
 - FLAC streaming to Icecast now uses an Ogg container: `%ogg(%flac())` to prevent runtime failures.
