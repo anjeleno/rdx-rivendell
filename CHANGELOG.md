@@ -1,5 +1,16 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.2.29 (2025-10-23)
+### Fixed
+- UI Hotfix: Corrected remaining indentation in the Stream Builder actions row and main window setup that could crash on launch (IndentationError).
+
+### Improved
+- Post-OPAM messaging clarified when neither `fdkaac` nor FFmpeg AAC encoders are present: MP3/Opus/Vorbis/FLAC remain usable; AAC requires `libfdk-aac-dev` (for `%fdkaac`) or FFmpeg dev libs before OPAM build.
+- Kept capability-based detection: AAC is only required if your generated config actually uses it; otherwise startup isn’t blocked.
+
+### Packaging
+- Rebuilt `.deb` with the hotfix and updated version metadata.
+
 ## v3.2.28 (2025-10-22)
 ### Added
 - Service Control: compact encoder capability line (e.g., "Encoders: fdkaac, ffmpeg, mp3, opus"). It auto-refreshes after start/restart and hides itself if no encoders are detected to avoid UI clutter.

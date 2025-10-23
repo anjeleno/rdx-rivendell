@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.2.28
+RDX Professional Broadcast Control Center v3.2.29
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1298,6 +1298,32 @@ class ServiceControlTab(QWidget):
         self._last_liq_probe_ts = 0.0
         self.update_liquidsoap_encoders_label(force=True)
 
+    # ---- Liquidsoap path/env helpers ------------------------------------
+    def _liquidsoap_bin(self) -> str:
+        """Prefer the per-user OPAM shim at ~/.local/bin/liquidsoap if present.
+        Fallback to whichever 'liquidsoap' is on PATH.
+        """
+        try:
+            home_bin = str(Path.home() / ".local" / "bin" / "liquidsoap")
+            if os.path.isfile(home_bin) and os.access(home_bin, os.X_OK):
+                return home_bin
+        except Exception:
+            pass
+        return "liquidsoap"
+
+    def _subprocess_env_with_localbin(self) -> dict:
+        """Return env with ~/.local/bin prepended to PATH so OPAM shim is found."""
+        env = os.environ.copy()
+        try:
+            home_local_bin = str(Path.home() / ".local" / "bin")
+            path = env.get("PATH", "")
+            parts = path.split(":") if path else []
+            if home_local_bin and home_local_bin not in parts:
+                env["PATH"] = f"{home_local_bin}:{path}" if path else home_local_bin
+        except Exception:
+            pass
+        return env
+
     def update_liquidsoap_encoders_label(self, force: bool = False):
         """Update the compact Liquidsoap encoders label with detected capabilities.
         Keeps UI uncluttered by hiding if nothing is found or liquidsoap missing.
@@ -1332,9 +1358,13 @@ class ServiceControlTab(QWidget):
             label.setVisible(False)
 
     def _has_liquidsoap_encoder(self, name: str) -> bool:
-        """Return True if 'encoder.<name>' help is available (plugin built/linked)."""
+        """Return True if 'encoder.<name>' help is available (plugin built/linked).
+        This prefers the per-user OPAM shim and augments PATH so GUI sessions see it.
+        """
         try:
-            res = subprocess.run(["liquidsoap", "-h", f"encoder.{name}"], capture_output=True, text=True)
+            res = subprocess.run([self._liquidsoap_bin(), "-h", f"encoder.{name}"],
+                                 capture_output=True, text=True,
+                                 env=self._subprocess_env_with_localbin())
             out = (res.stdout or "") + (res.stderr or "")
             return res.returncode == 0 and "Plugin not found" not in out
         except Exception:
@@ -1447,7 +1477,10 @@ class ServiceControlTab(QWidget):
 
                 # Verify liquidsoap is available
                 import shutil
-                if shutil.which("liquidsoap") is None:
+                # Check with augmented PATH and OPAM shim fallback
+                liq_bin = self._liquidsoap_bin()
+                liq_in_path = shutil.which("liquidsoap") is not None
+                if not (liq_in_path or (os.path.isfile(liq_bin) and os.access(liq_bin, os.X_OK))):
                     QMessageBox.critical(self, "Liquidsoap Not Found",
                                          "The 'liquidsoap' command is not installed or not in PATH.\n\n"
                                          "Recommended: Build via OPAM (PPA-free) from the installer dialog, or run:\n"
@@ -1480,15 +1513,15 @@ class ServiceControlTab(QWidget):
                     pass
 
                 # Parse-check Liquidsoap config before launching
-                check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                 if check.returncode != 0:
                     # Attempt auto-fix then strict fix as needed
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                     if check2.returncode != 0:
                         self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                         if check3.returncode != 0:
                             msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
                             msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
@@ -1502,10 +1535,11 @@ class ServiceControlTab(QWidget):
                     except Exception:
                         log_fh = None
                     try:
-                        subprocess.Popen(["liquidsoap", str(config_file)],
+                        subprocess.Popen([self._liquidsoap_bin(), str(config_file)],
                                          stdout=log_fh or subprocess.DEVNULL,
                                          stderr=log_fh or subprocess.DEVNULL,
-                                         start_new_session=True)
+                                         start_new_session=True,
+                                         env=self._subprocess_env_with_localbin())
                         QMessageBox.information(self, "Liquidsoap Started",
                                                 f"Liquidsoap started with config: {config_file}\n\n"
                                                 f"Logs: {log_file}")
@@ -1624,15 +1658,15 @@ class ServiceControlTab(QWidget):
                     pass
 
                 # Parse-check Liquidsoap config before launching
-                check = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                 if check.returncode != 0:
                     # Attempt auto-fix then strict fix as needed
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                     if check2.returncode != 0:
                         self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run(["liquidsoap", "-c", str(config_file)], capture_output=True, text=True)
+                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                         if check3.returncode != 0:
                             msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
                             msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
@@ -1646,10 +1680,11 @@ class ServiceControlTab(QWidget):
                     except Exception:
                         log_fh = None
                     try:
-                        subprocess.Popen(["liquidsoap", str(config_file)],
+                        subprocess.Popen([self._liquidsoap_bin(), str(config_file)],
                                          stdout=log_fh or subprocess.DEVNULL,
                                          stderr=log_fh or subprocess.DEVNULL,
-                                         start_new_session=True)
+                                         start_new_session=True,
+                                         env=self._subprocess_env_with_localbin())
                         QMessageBox.information(self, "Liquidsoap Restarted",
                                                 f"Liquidsoap restarted with config: {config_file}\n\n"
                                                 f"Logs: {log_file}")
@@ -1920,7 +1955,7 @@ verify
     def _probe_ffmpeg_capabilities(self):
         """Return (codecs, formats) sets supported by Liquidsoap ffmpeg encoder, or (None, None) on failure."""
         try:
-            res = subprocess.run(["liquidsoap", "-h", "encoder.ffmpeg"], capture_output=True, text=True)
+            res = subprocess.run([self._liquidsoap_bin(), "-h", "encoder.ffmpeg"], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
             if res.returncode != 0:
                 return (None, None)
             out = res.stdout or res.stderr or ""
@@ -1997,7 +2032,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.28")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.2.29")
         self.setMinimumSize(1000, 700)
         self.setup_ui()
         
@@ -2044,7 +2079,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.28")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.2.29")
 
 
 def main():
@@ -2052,7 +2087,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.2.28")
+    app.setApplicationVersion("3.2.29")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
