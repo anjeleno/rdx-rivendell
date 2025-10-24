@@ -1,5 +1,19 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.1 (2025-10-23)
+### Added
+- JACK Graph (preview): New visual graph tab that shows JACK clients/ports as nodes and connections as edges.
+  - Click an output port then an input port to connect.
+  - Right-click an edge to Disconnect or Lock/Unlock (protect) the client→client pair.
+  - Shares protected pairs with the Patchboard via `~/.config/rdx/jack_protected.json`.
+  - Includes Refresh, Auto-Connect, and Emergency Disconnect controls.
+
+### Improved
+- Fixed status bar initialization indentation to avoid class-scope execution; updated window title.
+
+### Notes
+- This is an initial, lightweight visualizer intended to complement the existing Patchboard. Future iterations will add draggable layout and per-edge persistence.
+
 ## v3.4.0 (2025-10-23)
 ### Added
 - JACK jackdbus mode in Service Control: start/stop/restart via `jack_control`, with parameters applied using `ds/dps/eps`.

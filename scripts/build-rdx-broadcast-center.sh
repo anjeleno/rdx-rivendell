@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.4.0"
+PACKAGE_VERSION="3.4.1"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
