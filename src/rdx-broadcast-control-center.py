@@ -19,9 +19,11 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QComboBox, QLineEdit, QTableWidget, QTableWidgetItem,
                             QHeaderView, QCheckBox, QSpinBox, QProgressBar,
                             QScrollArea, QFormLayout, QDialog, QDialogButtonBox,
-                            QSizePolicy, QSystemTrayIcon, QMenu)
-from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread
-from PyQt5.QtGui import QFont, QIcon, QPalette
+                            QSizePolicy, QSystemTrayIcon, QMenu,
+                            QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
+                            QGraphicsLineItem, QGraphicsTextItem)
+from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF
+from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor
 import urllib.request
 import shutil
 import shlex
@@ -1056,6 +1058,378 @@ class JackMatrixTab(QWidget):
 
         # Initialize
         self.refresh_jack_connections()
+
+
+class JackGraphTab(QWidget):
+    """Visual JACK graph: clients/ports as nodes with connectable edges and lock/unlock.
+    Preview version designed to complement the Patchboard.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.scene = QGraphicsScene(self)
+        self.view = QGraphicsView(self.scene, self)
+        self.view.setRenderHints(self.view.renderHints())
+        self.view.setDragMode(QGraphicsView.RubberBandDrag)
+        self.ports = {}
+        self.connections = []
+        self.critical_pairs = set()
+        self._load_protected_pairs()
+        self._selected_out = None  # full port string (output)
+        self._selected_in = None   # full port string (input)
+        self._setup_ui()
+        self.refresh()
+
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        # Toolbar
+        bar = QHBoxLayout()
+        btn_refresh = QPushButton("🔄 Refresh")
+        btn_refresh.clicked.connect(self.refresh)
+        btn_auto = QPushButton("🎯 Auto-Connect")
+        btn_auto.clicked.connect(self.auto_connect)
+        btn_emerg = QPushButton("🚨 Disconnect Non-Critical")
+        btn_emerg.clicked.connect(self.emergency_disconnect)
+        bar.addWidget(btn_refresh)
+        bar.addWidget(btn_auto)
+        bar.addWidget(btn_emerg)
+        bar.addStretch(1)
+        root.addLayout(bar)
+        root.addWidget(self.view)
+
+    # ----- Persistence -----
+    def _config_dir(self) -> Path:
+        p = Path.home() / ".config" / "rdx"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return p
+
+    def _prot_file(self) -> Path:
+        return self._config_dir() / "jack_protected.json"
+
+    def _load_protected_pairs(self):
+        try:
+            pf = self._prot_file()
+            if pf.exists():
+                with open(pf, 'r') as f:
+                    data = json.load(f)
+                pairs = data.get('pairs', [])
+                if isinstance(pairs, list):
+                    self.critical_pairs = set(str(x) for x in pairs)
+        except Exception:
+            self.critical_pairs = set()
+
+    def _save_protected_pairs(self):
+        try:
+            pf = self._prot_file()
+            with open(pf, 'w') as f:
+                json.dump({"pairs": sorted(list(self.critical_pairs))}, f, indent=2)
+        except Exception:
+            pass
+
+    # ----- JACK queries -----
+    def _run(self, args: list, timeout: float = 0.8):
+        try:
+            return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(args=args, returncode=1, stdout="", stderr="timeout")
+
+    def _parse_ports(self, txt: str) -> dict:
+        # reuse logic from JackMatrixTab but simplified
+        ports = {}
+        cur = None
+        for raw in (txt or "").splitlines():
+            line = raw.rstrip()
+            if not line:
+                continue
+            if not line.startswith(" ") and ":" in line:
+                cur = line.strip()
+                c = cur.split(":", 1)[0]
+                ports.setdefault(c, {"in": [], "out": []})
+                # guess by name
+                pn = cur.split(":", 1)[1].lower()
+                if "out" in pn and "in" not in pn:
+                    ports[c]["out"].append(cur)
+                elif "in" in pn and "out" not in pn:
+                    ports[c]["in"].append(cur)
+            elif line.strip().startswith("properties:") and cur:
+                props = line.split(":", 1)[1]
+                c = cur.split(":", 1)[0]
+                try:
+                    if cur in ports.get(c, {}).get("in", []):
+                        ports[c]["in"].remove(cur)
+                    if cur in ports.get(c, {}).get("out", []):
+                        ports[c]["out"].remove(cur)
+                except Exception:
+                    pass
+                if "output" in props:
+                    ports[c]["out"].append(cur)
+                else:
+                    ports[c]["in"].append(cur)
+        return ports
+
+    def _list_connections(self) -> list:
+        cons = []
+        res = self._run(["jack_lsp", "-c"], timeout=1.2)
+        txt = res.stdout or ""
+        src = None
+        for line in txt.splitlines():
+            if not line:
+                continue
+            if not line.startswith(" "):
+                src = line.strip()
+                continue
+            if src and line.startswith("    "):
+                dst = line.strip()
+                cons.append((src, dst))
+        return cons
+
+    # ----- Graph build -----
+    def refresh(self):
+        # Clear
+        self.scene.clear()
+        # Probe JACK
+        base = self._run(["jack_lsp"], timeout=0.7)
+        if base.returncode != 0:
+            self.scene.addText("JACK is not running")
+            return
+        res = self._run(["jack_lsp", "-p"], timeout=0.9)
+        out = res.stdout or base.stdout
+        self.ports = self._parse_ports(out)
+        self.connections = self._list_connections()
+        # Layout: outputs on left, inputs on right
+        left_x = 50
+        right_x = 650
+        y = 20
+        port_items = {}
+        header_font = QFont(); header_font.setBold(True)
+        # Left column
+        for client in sorted(self.ports.keys(), key=lambda x: x.lower()):
+            outs = self.ports[client].get("out", [])
+            if not outs:
+                continue
+            title = self.scene.addText(client)
+            title.setFont(header_font)
+            title.setDefaultTextColor(QColor("#2c3e50"))
+            title.setPos(left_x, y)
+            y2 = y + 20
+            for p in outs:
+                item = self._add_port_node(p, QPointF(left_x, y2), is_output=True)
+                port_items[p] = item
+                y2 += 22
+            y = max(y2 + 10, y + 60)
+        # Right column
+        y = 20
+        for client in sorted(self.ports.keys(), key=lambda x: x.lower()):
+            ins = self.ports[client].get("in", [])
+            if not ins:
+                continue
+            title = self.scene.addText(client)
+            title.setFont(header_font)
+            title.setDefaultTextColor(QColor("#2c3e50"))
+            title.setPos(right_x, y)
+            y2 = y + 20
+            for p in ins:
+                item = self._add_port_node(p, QPointF(right_x, y2), is_output=False)
+                port_items[p] = item
+                y2 += 22
+            y = max(y2 + 10, y + 60)
+        # Edges
+        for sp, dp in self.connections:
+            sp_item = port_items.get(sp)
+            dp_item = port_items.get(dp)
+            if not sp_item or not dp_item:
+                continue
+            self._add_edge(sp_item, dp_item)
+        self.view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+
+    def _add_port_node(self, fullport: str, pos: QPointF, is_output: bool):
+        r = 6
+        color = QColor("#27ae60") if is_output else QColor("#3498db")
+        pen = QPen(color); pen.setWidth(2)
+        ell = QGraphicsEllipseItem(-r, -r, 2*r, 2*r)
+        ell.setPen(pen)
+        ell.setBrush(QColor("#ecf0f1"))
+        ell.setToolTip(fullport)
+        ell.setPos(pos)
+        ell.setZValue(2)
+        ell.setFlag(ell.ItemIsSelectable, True)
+        # label
+        lab = QGraphicsTextItem(fullport.split(":",1)[1])
+        lab.setPos(pos + QPointF(12 if is_output else -180, -10))
+        lab.setDefaultTextColor(QColor("#2c3e50"))
+        self.scene.addItem(lab)
+        self.scene.addItem(ell)
+
+        def on_click(event):
+            if event.button() == Qt.LeftButton:
+                if is_output:
+                    self._selected_out = fullport
+                else:
+                    self._selected_in = fullport
+                # If both selected, attempt connect
+                if self._selected_out and self._selected_in:
+                    try:
+                        self._jack_connect(self._selected_out, self._selected_in)
+                        self.refresh()
+                    except Exception as e:
+                        QMessageBox.critical(self, "JACK Error", f"Connect failed: {e}")
+                    finally:
+                        self._selected_out = None
+                        self._selected_in = None
+            return super(QGraphicsEllipseItem, ell).mousePressEvent(event)
+
+        ell.mousePressEvent = on_click
+        return ell
+
+    def _add_edge(self, sp_item: QGraphicsEllipseItem, dp_item: QGraphicsEllipseItem):
+        p1 = sp_item.scenePos()
+        p2 = dp_item.scenePos()
+        line = QGraphicsLineItem(p1.x()+6, p1.y(), p2.x()-6, p2.y())
+        s_client = sp_item.toolTip().split(":",1)[0]
+        d_client = dp_item.toolTip().split(":",1)[0]
+        key = f"{s_client}→{d_client}"
+        is_prot = key in self.critical_pairs
+        pen = QPen(QColor("#e67e22") if is_prot else QColor("#7f8c8d"))
+        pen.setWidth(2 if is_prot else 1)
+        line.setPen(pen)
+        line.setZValue(1)
+        line.setToolTip(f"{sp_item.toolTip()} → {dp_item.toolTip()}")
+        line.setFlag(line.ItemIsSelectable, True)
+        self.scene.addItem(line)
+
+        def on_line_press(event):
+            if event.button() == Qt.RightButton:
+                menu = QMenu()
+                act_disc = menu.addAction("Disconnect")
+                act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
+                chosen = menu.exec_(event.screenPos().toPoint())
+                if chosen == act_disc:
+                    try:
+                        self._jack_disconnect(sp_item.toolTip(), dp_item.toolTip())
+                        self.refresh()
+                    except Exception as e:
+                        QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
+                elif chosen == act_lock:
+                    if is_prot:
+                        if key in self.critical_pairs:
+                            self.critical_pairs.remove(key)
+                            self._save_protected_pairs()
+                    else:
+                        self.critical_pairs.add(key)
+                        self._save_protected_pairs()
+                    self.refresh()
+                return
+            return super(QGraphicsLineItem, line).mousePressEvent(event)
+
+        line.mousePressEvent = on_line_press
+
+    # ----- Quick actions -----
+    def auto_connect(self):
+        # Simple delegate to MatrixTab heuristics using subprocess connect
+        # Use current graph state to pick clients
+        def find_like(names, direction):
+            for c in sorted(self.ports.keys()):
+                lc = c.lower()
+                if any(n in lc for n in names):
+                    if len(self.ports.get(c, {}).get(direction, [])) >= 2:
+                        return c
+            return None
+        rd = find_like(["rivendell", "rd"], "out") or find_like(["system"], "out")
+        st = find_like(["stereo tool", "stereotool", "stereo_tool", "thimeo"], "in")
+        ls_in = find_like(["liquidsoap"], "in")
+        ls_out = find_like(["liquidsoap"], "out")
+        sys_play = find_like(["system"], "in")
+        actions = []
+        def pair(a,b):
+            return f"{a}→{b}" if a and b else None
+        for a,b in ((rd,st),(st,ls_in),(ls_out,sys_play)):
+            if a and b:
+                s_ports = self._first_two(self.ports.get(a,{}).get("out",[]))
+                d_ports = self._first_two(self.ports.get(b,{}).get("in",[]))
+                if len(s_ports)==2 and len(d_ports)==2:
+                    try:
+                        self._jack_connect(s_ports[0], d_ports[0])
+                        self._jack_connect(s_ports[1], d_ports[1])
+                        actions.append(pair(a,b))
+                    except Exception:
+                        pass
+        if not actions:
+            QMessageBox.information(self, "Auto-Connect", "No suitable clients found for auto patching.")
+        self.refresh()
+
+    def emergency_disconnect(self):
+        reply = QMessageBox.warning(self, "EMERGENCY DISCONNECT",
+                                    "⚠️ This will disconnect ALL non-critical JACK connections!\n\nContinue?",
+                                    QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            res = self._run(["jack_lsp", "-c"], timeout=1.0)
+            txt = res.stdout or ""
+            cur_src = None
+            for line in txt.splitlines():
+                if not line:
+                    continue
+                if not line.startswith(" "):
+                    cur_src = line.strip()
+                    continue
+                if cur_src and line.startswith("    "):
+                    dst = line.strip()
+                    s_client = cur_src.split(":", 1)[0]
+                    d_client = dst.split(":", 1)[0]
+                    key = f"{s_client}→{d_client}"
+                    if key not in self.critical_pairs:
+                        try:
+                            self._jack_disconnect(cur_src, dst)
+                        except Exception:
+                            pass
+            QMessageBox.information(self, "Emergency Disconnect", "All non-critical connections disconnected.")
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", f"Could not enumerate connections: {e}")
+
+    # ----- helpers -----
+    def _first_two(self, arr):
+        out = list(arr)
+        def sort_key(p: str):
+            pn = p.split(":", 1)[1].lower()
+            if re.search(r"(^|[_\-:])l(eft)?($|[_\-:])", pn):
+                return (-2, pn)
+            if re.search(r"(^|[_\-:])r(ight)?($|[_\-:])", pn):
+                return (-1, pn)
+            m = re.search(r"(\d+)$", pn)
+            if m:
+                return (int(m.group(1)), pn)
+            return (999, pn)
+        out.sort(key=sort_key)
+        return out[:2]
+
+    def _jack_connect(self, src_port: str, dst_port: str):
+        r = self._run(["jack_connect", src_port, dst_port], timeout=1.2)
+        if r.returncode != 0:
+            # tolerate already-connected
+            if self._connected(src_port, dst_port):
+                return
+            raise RuntimeError((r.stderr or r.stdout or "jack_connect failed").strip())
+
+    def _jack_disconnect(self, src_port: str, dst_port: str):
+        self._run(["jack_disconnect", src_port, dst_port], timeout=1.2)
+
+    def _connected(self, sp: str, dp: str) -> bool:
+        res = self._run(["jack_lsp", "-c"], timeout=1.0)
+        txt = res.stdout or ""
+        cur = None
+        for line in txt.splitlines():
+            if not line:
+                continue
+            if not line.startswith(" "):
+                cur = line.strip()
+                continue
+            if cur == sp and line.strip() == dp:
+                return True
+        return False
 
     # ---- JACK helpers ----
     def refresh_jack_connections(self):
@@ -3567,7 +3941,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.3.5")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.0")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -3613,6 +3987,14 @@ class RDXBroadcastControlCenter(QMainWindow):
         self.jack_matrix = JackMatrixTab()
         self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
 
+        # Visual Graph (preview)
+        try:
+            self.jack_graph = JackGraphTab()
+            self.tab_widget.addTab(self.jack_graph, "🕸️ JACK Graph")
+        except Exception:
+            # Non-fatal if graphics are unavailable
+            pass
+
         # Stereo Tool Manager
         self.stereo_tool_manager = StereoToolManagerTab()
         self.tab_widget.addTab(self.stereo_tool_manager, "🎚️ Stereo Tool Manager")
@@ -3627,7 +4009,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.3.4")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.0")
 
     # ---- System tray ----
     def _setup_tray(self):
