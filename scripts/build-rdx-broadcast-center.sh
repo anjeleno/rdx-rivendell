@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.4.4"
+PACKAGE_VERSION="3.4.5"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -103,6 +103,27 @@ def scan_class_scope_self(txt):
     v.visit(tree)
     return v.violations
 
+def jackmatrix_methods_present(txt):
+    """Return True if class JackMatrixTab defines required methods like _pretty_client and _pretty_port_name."""
+    try:
+        tree = ast.parse(txt)
+    except Exception:
+        return False
+    required = {"_pretty_client", "_pretty_port_name"}
+    class Found(Exception):
+        pass
+    have = set()
+    class_names = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "JackMatrixTab":
+            for stmt in node.body:
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if stmt.name in required:
+                        have.add(stmt.name)
+        if isinstance(node, ast.ClassDef):
+            class_names.append(node.name)
+    return required.issubset(have), have, class_names
+
 def normalize(txt):
     lines = txt.splitlines()
     out = []
@@ -182,6 +203,13 @@ if errs:
         print("   ❌ Invalid after normalization; aborting build.")
         sys.exit(1)
     print("   ✅ Fixed and valid")
+    # After normalization, enforce JackMatrixTab methods presence
+    present, have, classes = jackmatrix_methods_present(fixed)
+    if not present:
+        print("   ❌ JackMatrixTab integrity check failed: required methods missing (e.g., _pretty_client). Aborting build.")
+        print(f"      Found methods: {sorted(have)}")
+        print(f"      Classes in module: {sorted(classes)}")
+        sys.exit(1)
     sys.exit(0)
 
 if ok:
@@ -191,6 +219,41 @@ if ok:
         print("   ❌ Build guard: class-scope 'self.' detected; failing build to prevent runtime NameError.")
         for ln, text in errs[:10]:
             print(f"      line {ln}: {text.strip()}")
+        sys.exit(1)
+    # Enforce JackMatrixTab methods presence
+    present, have, classes = jackmatrix_methods_present(code)
+    if not present:
+        print("   ❌ Build guard: JackMatrixTab missing required methods (_pretty_client/_pretty_port_name). Failing build.")
+        print(f"      Found methods: {sorted(have)}")
+        print(f"      Classes in module: {sorted(classes)}")
+        # Debug snippet around potential definitions
+        lines = code.splitlines()
+        # Dump method names the AST sees inside JackMatrixTab
+        try:
+            import ast
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name == 'JackMatrixTab':
+                    seen = []
+                    for stmt in node.body:
+                        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            seen.append((stmt.name, getattr(stmt, 'lineno', -1)))
+                    print(f"      AST sees methods in JackMatrixTab: {seen}")
+        except Exception as e:
+            print(f"      AST dump failed: {e}")
+        for idx, line in enumerate(lines, start=1):
+            if line.lstrip().startswith('def _pretty_client') or line.lstrip().startswith('def _pretty_port_name'):
+                start = max(1, idx-2)
+                end = min(len(lines), idx+3)
+                print(f"      Source near line {idx}:")
+                for i in range(start, end+1):
+                    s = lines[i-1]
+                    print(f"        {i:4d}: {repr(s)}")
+                # Find nearest enclosing class header above
+                for j in range(idx-1, 0, -1):
+                    if lines[j-1].lstrip().startswith('class '):
+                        print(f"      Nearest class header above pretty method: line {j}: {lines[j-1].strip()}")
+                        break
         sys.exit(1)
     print("   ✅ Syntax OK")
     sys.exit(0)

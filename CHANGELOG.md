@@ -1,5 +1,15 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.5 (2025-10-24)
+### Fixed
+- Ensured `JackMatrixTab` defines its own pretty helpers in-class: `_pretty_client`, `_pretty_port_name`. This avoids AttributeError during startup.
+
+### Build Safety
+- Builder guard now verifies those methods exist inside `JackMatrixTab` via AST and fails the build if missing. This prevents packaging scoping mistakes from shipping.
+
+### Packaging
+- Bumped to 3.4.5 and rebuilt the `.deb`.
+
 ## v3.4.4 (2025-10-24)
 ### Changed
 - Version bump and rebuild to roll up the latest hotfixes and keep package metadata aligned with in-app version strings.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.4
+RDX Professional Broadcast Control Center v3.4.5
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1428,6 +1428,32 @@ class JackMatrixTab(QWidget):
             QMessageBox.information(self, "Disconnected", f"{sp} ⛓️ {dp}")
         except Exception as e:
             QMessageBox.critical(self, "JACK Error", str(e))
+
+    # ---- Pretty naming helpers (Matrix) ----
+    def _pretty_client(self, name: str) -> str:
+        ln = (name or '').lower()
+        if ln.startswith('system'):
+            return 'System'
+        if 'rivendell' in ln or ln.startswith('rd'):
+            return 'Rivendell'
+        if 'liquidsoap' in ln:
+            return 'Liquidsoap'
+        if 'stereo_tool' in ln or 'stereotool' in ln or 'stereo tool' in ln:
+            return 'Stereo Tool'
+        return name
+
+    def _pretty_port_name(self, pn: str) -> str:
+        lpn = (pn or '').lower()
+        # Common JACK port namings
+        if lpn in ("in_1", "capture_1", "playout_0l", "left", "l", "in_l", "in:left"):
+            return "Left In"
+        if lpn in ("in_2", "capture_2", "playout_0r", "right", "r", "in_r", "in:right"):
+            return "Right In"
+        if lpn in ("out_1", "playback_1", "out_l", "left", "l", "out:left"):
+            return "Left Out"
+        if lpn in ("out_2", "playback_2", "out_r", "right", "r", "out:right"):
+            return "Right Out"
+        return pn
 
 class JackGraphTab(QWidget):
     """Visual JACK graph: clients/ports as nodes with connectable edges and lock/unlock.
@@ -4310,7 +4336,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.4")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.5")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4378,7 +4404,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.4")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.5")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -4460,7 +4486,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.4")
+    app.setApplicationVersion("3.4.5")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
