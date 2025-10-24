@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.4 (2025-10-24)
+### Changed
+- Version bump and rebuild to roll up the latest hotfixes and keep package metadata aligned with in-app version strings.
+
+### Packaging
+- Rebuilt `.deb` as 3.4.4 and published.
+
 ## v3.4.3 (2025-10-24)
 ### Fixed
 - Startup crash on some installs: `AttributeError: 'JackMatrixTab' object has no attribute 'refresh_jack_connections'`.
