@@ -1,3 +1,12 @@
+## v3.4.13 (2025-10-24)
+### Fixed
+- Profile generator now chooses true stereo pairs for each client (e.g., fm_l/fm_r, in_0/in_1) instead of occasionally picking two left channels (like fm_l + low_l).
+- JACK connect: treat non-fatal "Cannot lock down ... memory area" messages as noise; verify actual connection state and proceed to avoid false failures.
+- Applying a generated profile is now best-effort: each connect is attempted independently so a single transient warning won’t abort the whole apply. A concise summary is shown if any non-fatal issues occurred.
+
+### Packaging
+- Prepared 3.4.13 with the above fixes.
+
 ## v3.4.12 (2025-10-24)
 ### Fixed
 - Hotfix: Restored Jack Graph tab. An internal reference to a removed method during initialization caused a silent exception and the tab didn’t appear. The call is now removed.

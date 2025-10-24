@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.12
+RDX Professional Broadcast Control Center v3.4.13
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -2151,17 +2151,29 @@ class JackGraphTab(QWidget):
             key = name.strip()
             self.profiles[key] = pairs
             self._save_profiles()
-            # Offer immediate apply
-            try:
-                applied = 0
-                for s, d in pairs:
-                    if self._port_exists(s) and self._port_exists(d):
+            # Offer immediate apply (best-effort; continue on individual errors)
+            applied = 0
+            errs = []
+            for s, d in pairs:
+                if self._port_exists(s) and self._port_exists(d):
+                    try:
                         self._jack_connect(s, d)
                         applied += 1
-                self.refresh()
+                    except Exception as e:
+                        errs.append(str(e))
+            self.refresh()
+            if errs:
+                # Show a concise warning but confirm partial success
+                uniq = []
+                for m in errs:
+                    lm = m.strip()
+                    if lm and lm not in uniq:
+                        uniq.append(lm)
+                detail = "\n".join(uniq[:3])  # limit noise
+                QMessageBox.warning(self, "Profile Generated",
+                                    f"Saved '{key}' and applied {applied}/{len(pairs)} connections, with some non-fatal issues:\n{detail}")
+            else:
                 QMessageBox.information(self, "Profile Generated", f"Saved '{key}' and applied {applied}/{len(pairs)} connections.")
-            except Exception as e:
-                QMessageBox.warning(self, "Apply Generated Profile", f"Saved '{key}' but applying encountered issues: {e}")
         except Exception as e:
             QMessageBox.critical(self, "Generate Profile", f"Could not generate profile: {e}")
 
@@ -2197,26 +2209,104 @@ class JackGraphTab(QWidget):
 
     # ----- helpers -----
     def _first_two(self, arr):
-        out = list(arr)
-        def sort_key(p: str):
-            pn = p.split(":", 1)[1].lower()
-            if re.search(r"(^|[_\-:])l(eft)?($|[_\-:])", pn):
-                return (-2, pn)
-            if re.search(r"(^|[_\-:])r(ight)?($|[_\-:])", pn):
-                return (-1, pn)
-            m = re.search(r"(\d+)$", pn)
+        """Pick a sensible stereo pair from a list of full port names.
+        Preference order:
+        1) Matching L/R pair with same base (e.g., fm_l/fm_r, out_L/out_R)
+        2) Matching numeric pair with same base (0/1 then 1/2, e.g., in_0/in_1, out_1/out_2)
+        3) First available Left + first available Right across all ports
+        4) Fallback to the first two ports sorted stably
+        """
+        ports = list(arr)
+        if len(ports) <= 2:
+            return ports
+
+        def split(p: str):
+            client, pn = p.split(":", 1)
+            return client, pn
+
+        def norm_base_and_side(pn: str):
+            pl = pn.lower()
+            # Detect side markers
+            side = None
+            if re.search(r"(^|[_.\-:])l(eft)?($|[_.\-:])", pl):
+                side = "L"
+            if re.search(r"(^|[_.\-:])r(ight)?($|[_.\-:])", pl):
+                side = "R"
+            # Trailing single letter L/R (e.g., record_0L)
+            if side is None and re.search(r"[a-zA-Z0-9]_?[lL]$", pn):
+                side = "L"
+            if side is None and re.search(r"[a-zA-Z0-9]_?[rR]$", pn):
+                side = "R"
+            # Numeric index at end
+            num = None
+            m = re.search(r"(?:[_:\-])(\d+)$", pl)
             if m:
-                return (int(m.group(1)), pn)
-            return (999, pn)
-        out.sort(key=sort_key)
-        return out[:2]
+                try:
+                    num = int(m.group(1))
+                except Exception:
+                    num = None
+            # Compute base: strip trailing side or numeric tokens
+            base = pl
+            base = re.sub(r"([_.:\-])?(l(eft)?|r(ight)?)$", "", base)
+            base = re.sub(r"([_.:\-])(\d+)$", "", base)
+            return base, side, num
+
+        # Group by client+base to find best L/R or numeric pairs
+        groups = {}
+        meta = {}
+        for p in ports:
+            client, pn = split(p)
+            base, side, num = norm_base_and_side(pn)
+            key = (client.lower(), base)
+            groups.setdefault(key, []).append(p)
+            meta[p] = (side, num)
+
+        # 1) Try exact L/R within same base
+        for key, items in groups.items():
+            left = None; right = None
+            for p in items:
+                s, _ = meta[p]
+                if s == "L" and left is None:
+                    left = p
+                elif s == "R" and right is None:
+                    right = p
+            if left and right:
+                return [left, right]
+
+        # 2) Try numeric pairs within same base (prefer 0/1, else 1/2)
+        for prefer in ((0,1), (1,2)):
+            for key, items in groups.items():
+                want = {prefer[0]: None, prefer[1]: None}
+                for p in items:
+                    _, n = meta[p]
+                    if n in want and want[n] is None:
+                        want[n] = p
+                if all(want.values()):
+                    return [want[prefer[0]], want[prefer[1]]]
+
+        # 3) First Left + first Right overall
+        first_l = next((p for p in ports if meta.get(p, (None,None))[0] == "L"), None)
+        first_r = next((p for p in ports if meta.get(p, (None,None))[0] == "R"), None)
+        if first_l and first_r:
+            return [first_l, first_r]
+
+        # 4) Stable fallback: sort by client/port then take two
+        def key_fallback(p: str):
+            client, pn = split(p)
+            return (client.lower(), pn.lower())
+        ports.sort(key=key_fallback)
+        return ports[:2]
 
     def _jack_connect(self, src_port: str, dst_port: str):
         r = self._run(["jack_connect", src_port, dst_port], timeout=1.8)
         if r.returncode != 0:
             msg = (r.stderr or r.stdout or "jack_connect failed").strip()
             low = msg.lower()
-            # Tolerate common non-fatal errors
+            # Ignore common non-fatal noise
+            if "cannot lock down" in low:
+                # If connection ended up established, treat as success
+                if self._connected(src_port, dst_port):
+                    return
             if "already connected" in low or "ports are already connected" in low:
                 return
             if self._connected(src_port, dst_port):
