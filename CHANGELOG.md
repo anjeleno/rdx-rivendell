@@ -1,3 +1,17 @@
+## v3.4.14 (2025-10-24)
+### UI
+- Jack Graph: Added drag-to-connect cables with live preview; connect on drop from outputs to inputs and cancel on outside drop.
+- Jack Graph: Right-click cable menu refined with Lock/Unlock state and Disconnect disabled for locked pairs.
+- Profiles: Added Edit… dialog to modify saved profiles (add/remove pairs) and save.
+- Visibility: Thicker, higher-contrast cables and reliable rendering across environments.
+
+### Fixed
+- `jack_lsp -c` parsing tolerates any whitespace; existing connections now render consistently.
+- Version strings aligned across header, window title, status bar, and application metadata.
+
+### Packaging
+- Bumped package to 3.4.14 and rebuilt `.deb`.
+
 ## v3.4.13 (2025-10-24)
 ### Fixed
 - Profile generator now chooses true stereo pairs for each client (e.g., fm_l/fm_r, in_0/in_1) instead of occasionally picking two left channels (like fm_l + low_l).
