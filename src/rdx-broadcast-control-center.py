@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.7
+RDX Professional Broadcast Control Center v3.4.8
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1466,6 +1466,7 @@ class JackGraphTab(QWidget):
         self.view = QGraphicsView(self.scene, self)
         self.view.setRenderHints(self.view.renderHints())
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
+        self._fit_pending = True  # Fit once by default; user can control zoom after
         self.ports = {}
         self.connections = []
         self.critical_pairs = set()
@@ -1485,10 +1486,27 @@ class JackGraphTab(QWidget):
         btn_auto.clicked.connect(self.auto_connect)
         btn_emerg = QPushButton("🚨 Disconnect Non-Critical")
         btn_emerg.clicked.connect(self.emergency_disconnect)
+        btn_zoom_out = QPushButton("➖ Zoom Out")
+        btn_zoom_out.clicked.connect(lambda: self._zoom(0.9))
+        btn_zoom_in = QPushButton("➕ Zoom In")
+        btn_zoom_in.clicked.connect(lambda: self._zoom(1.1))
+        btn_fit = QPushButton("🖼️ Fit All")
+        def _do_fit():
+            try:
+                rect = self.scene.itemsBoundingRect()
+                if rect.isValid():
+                    self.view.fitInView(rect, Qt.KeepAspectRatio)
+            except Exception:
+                pass
+            self._fit_pending = False
+        btn_fit.clicked.connect(_do_fit)
         bar.addWidget(btn_refresh)
         bar.addWidget(btn_auto)
         bar.addWidget(btn_emerg)
         bar.addStretch(1)
+        bar.addWidget(btn_zoom_out)
+        bar.addWidget(btn_zoom_in)
+        bar.addWidget(btn_fit)
         root.addLayout(bar)
         root.addWidget(self.view)
 
@@ -1638,7 +1656,12 @@ class JackGraphTab(QWidget):
             if not sp_item or not dp_item:
                 continue
             self._add_edge(sp_item, dp_item)
-        self.view.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+        # Fit only if requested/pending; otherwise preserve user's zoom/scroll
+        if getattr(self, "_fit_pending", False):
+            rect = self.scene.itemsBoundingRect()
+            if rect.isValid():
+                self.view.fitInView(rect, Qt.KeepAspectRatio)
+            self._fit_pending = False
 
     def _add_port_node(self, fullport: str, pos: QPointF, is_output: bool):
         r = 6
@@ -2768,6 +2791,74 @@ class ServiceControlTab(QWidget):
         for btn in (getattr(self, 'jack_start_btn', None), getattr(self, 'jack_stop_btn', None), getattr(self, 'jack_restart_btn', None)):
             if btn is not None:
                 btn.setEnabled(bool(manage))
+        # Ensure user systemd unit exists/updated and enabled state reflects settings
+        try:
+            self._ensure_jack_unit()
+            autostart = bool(self.jack_settings.get("autostart", False)) and manage
+            if autostart:
+                subprocess.run(["systemctl", "--user", "enable", "rdx-jack"], check=False)
+            else:
+                subprocess.run(["systemctl", "--user", "disable", "rdx-jack"], check=False)
+        except Exception:
+            pass
+
+    def _jack_unit_path(self) -> Path:
+        return Path.home() / ".config" / "systemd" / "user" / "rdx-jack.service"
+
+    def _ensure_jack_unit(self):
+        """Create/update per-user systemd unit for JACK based on current settings.
+        This enables autostart at login if the unit is enabled. For headless pre-login,
+        consider enabling lingering for the user (loginctl enable-linger $USER) and prefer jackd mode.
+        """
+        try:
+            unit_dir = self._jack_unit_path().parent
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            s = self.jack_settings
+            mode = s.get("mode", "jackd").lower()
+            if mode == "jackdbus":
+                # Build a shell sequence to configure and start via jack_control
+                backend = s.get("backend", "alsa")
+                rate = int(s.get("rate", 48000) or 48000)
+                period = int(s.get("period", 256) or 256)
+                nperiods = int(s.get("nperiods", 2) or 2)
+                dev = (s.get("device", "") or "").strip()
+                rt = str(bool(s.get("realtime", True))).lower()
+                seq = [
+                    "jack_control stop",
+                    f"jack_control ds {backend}",
+                    f"jack_control eps realtime {rt}",
+                    f"jack_control dps rate {rate}",
+                    f"jack_control dps period {period}",
+                    f"jack_control dps nperiods {nperiods}",
+                ]
+                if backend.lower() == "alsa" and dev:
+                    seq.insert(3, f"jack_control dps device {shlex.quote(dev)}")
+                seq.append("jack_control start")
+                execstart = f"/bin/bash -lc '{' && '.join(seq)}'"
+            else:
+                # jackd command as built for interactive start
+                cmd = self._build_jackd_command()
+                # Quote safely for ExecStart
+                execstart = " ".join(shlex.quote(x) for x in cmd)
+            unit = f"""[Unit]
+Description=RDX JACK Server
+After=default.target
+Wants=default.target
+
+[Service]
+Type=simple
+ExecStart={execstart}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+"""
+            self._jack_unit_path().write_text(unit, encoding="utf-8")
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+        except Exception:
+            # Non-fatal: interactive controls still work
+            pass
 
     def _st_path_root(self) -> Path:
         return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
@@ -3536,6 +3627,12 @@ verify
         manage_cb.setChecked(self.jack_settings.get("manage", True))
         form.addRow("Management:", manage_cb)
 
+        # Autostart toggle
+        autostart_cb = QCheckBox("Start JACK at login (user service)")
+        autostart_cb.setToolTip("Creates/enables a per-user systemd unit 'rdx-jack' so JACK starts when you log in.\nFor pre-login headless boot, prefer jackd mode and enable user lingering.")
+        autostart_cb.setChecked(self.jack_settings.get("autostart", False))
+        form.addRow("Autostart:", autostart_cb)
+
         # Mode selector
         mode_combo = QComboBox()
         mode_combo.addItems(["jackd", "jackdbus"])  # direct or jackdbus via jack_control
@@ -3680,6 +3777,7 @@ verify
         if dlg.exec_() == QDialog.Accepted:
             data = {
                 "manage": manage_cb.isChecked(),
+                "autostart": autostart_cb.isChecked(),
                 "mode": mode_combo.currentText(),
                 "backend": backend_combo.currentText(),
                 "device": dev_combo.currentText().strip(),
@@ -4369,7 +4467,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.7")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.8")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4437,7 +4535,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.7")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.8")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -4519,7 +4617,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.7")
+    app.setApplicationVersion("3.4.8")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.8 (2025-10-24)
+### Changed
+- Version bump to publish jackd dummy backend fix and hardened release notes flow.
+
+### Notes
+- Use the built-in publish script with `--from-changelog` to keep release notes concise and attach the .deb automatically.
+
 ## v3.4.7 (2025-10-24)
 ### Fixed
 - jackd dummy backend: omit `-n` (nperiods) which is not supported by the dummy driver, preventing "Unknown option n" errors with jackdmp 1.9.20.
