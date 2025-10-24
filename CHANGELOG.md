@@ -1,5 +1,15 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.10 (2025-10-24)
+### Added
+- JACK Profiles: Save current graph connections as a named profile; Apply/Delete from the Jack Graph tab. Profiles are stored at `~/.config/rdx/jack_profiles.json`.
+
+### Changed
+- Jack Graph layout polish: moved client and port labels outward so the middle stays clean; drag from left output ports to right input ports is now visually clear and uncluttered.
+
+### Packaging
+- Bumped to 3.4.10 and rebuilt `.deb`.
+
 ## v3.4.9 (2025-10-24)
 ### Fixed
 - Jack Graph: Zoom In/Out now work with smooth scaling and preserved zoom after refresh.

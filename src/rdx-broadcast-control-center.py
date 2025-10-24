@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.9
+RDX Professional Broadcast Control Center v3.4.10
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1477,7 +1477,9 @@ class JackGraphTab(QWidget):
         self.ports = {}
         self.connections = []
         self.critical_pairs = set()
+        self.profiles = {}
         self._load_protected_pairs()
+        self._load_profiles()
         self._selected_out = None  # full port string (output)
         self._selected_in = None   # full port string (input)
         self._setup_ui()
@@ -1535,8 +1537,24 @@ class JackGraphTab(QWidget):
         manual.addWidget(btn_md)
         manual.addWidget(btn_lock)
         root.addLayout(manual)
-        root.addWidget(self.view)
+        # Profiles row
+        prof = QHBoxLayout()
+        prof.addWidget(QLabel("Profile:"))
+        self.profile_combo = QComboBox(); self.profile_combo.setEditable(False)
+        prof.addWidget(self.profile_combo)
+        btn_apply = QPushButton("Apply")
+        btn_save = QPushButton("Save Current As…")
+        btn_delete = QPushButton("Delete")
+        btn_apply.clicked.connect(self.apply_selected_profile)
+        btn_save.clicked.connect(self.save_current_as_profile)
+        btn_delete.clicked.connect(self.delete_selected_profile)
+        prof.addWidget(btn_apply)
+        prof.addWidget(btn_save)
+        prof.addWidget(btn_delete)
+        prof.addStretch(1)
+        root.addLayout(prof)
 
+        root.addWidget(self.view)
     # ----- Persistence -----
     def _config_dir(self) -> Path:
         p = Path.home() / ".config" / "rdx"
@@ -1566,6 +1584,42 @@ class JackGraphTab(QWidget):
             pf = self._prot_file()
             with open(pf, 'w') as f:
                 json.dump({"pairs": sorted(list(self.critical_pairs))}, f, indent=2)
+        except Exception:
+            pass
+
+    # ----- Profiles persistence -----
+    def _profiles_file(self) -> Path:
+        return self._config_dir() / "jack_profiles.json"
+
+    def _load_profiles(self):
+        try:
+            pf = self._profiles_file()
+            if pf.exists():
+                with open(pf, 'r') as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    self.profiles = {str(k): list(v) for k, v in data.items()}
+        except Exception:
+            self.profiles = {}
+        self._refresh_profiles_combo()
+
+    def _save_profiles(self):
+        try:
+            pf = self._profiles_file()
+            with open(pf, 'w') as f:
+                json.dump(self.profiles, f, indent=2)
+        except Exception:
+            pass
+
+    def _refresh_profiles_combo(self):
+        try:
+            names = sorted(self.profiles.keys(), key=lambda s: s.lower())
+            cur = self.profile_combo.currentText() if hasattr(self, 'profile_combo') else None
+            if hasattr(self, 'profile_combo'):
+                self.profile_combo.clear()
+                self.profile_combo.addItems(names)
+                if cur in names:
+                    self.profile_combo.setCurrentText(cur)
         except Exception:
             pass
 
@@ -1654,10 +1708,11 @@ class JackGraphTab(QWidget):
             outs = self.ports[client].get("out", [])
             if not outs:
                 continue
+            # Put client label outside (left) to keep center clear
             title = self.scene.addText(client)
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
-            title.setPos(left_x, y)
+            title.setPos(left_x - 160, y)
             y2 = y + 20
             for p in outs:
                 item = self._add_port_node(p, QPointF(left_x, y2), is_output=True)
@@ -1670,10 +1725,11 @@ class JackGraphTab(QWidget):
             ins = self.ports[client].get("in", [])
             if not ins:
                 continue
+            # Put client label outside (right) to keep center clear
             title = self.scene.addText(client)
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
-            title.setPos(right_x, y)
+            title.setPos(right_x + 20, y)
             y2 = y + 20
             for p in ins:
                 item = self._add_port_node(p, QPointF(right_x, y2), is_output=False)
@@ -1709,7 +1765,8 @@ class JackGraphTab(QWidget):
         ell.setFlag(ell.ItemIsSelectable, True)
         # label
         lab = QGraphicsTextItem(fullport.split(":",1)[1])
-        lab.setPos(pos + QPointF(12 if is_output else -180, -10))
+        # Place labels outward to keep center uncluttered
+        lab.setPos(pos + QPointF(-180 if is_output else 12, -10))
         lab.setDefaultTextColor(QColor("#2c3e50"))
         self.scene.addItem(lab)
         self.scene.addItem(ell)
@@ -1892,6 +1949,70 @@ class JackGraphTab(QWidget):
         if not actions:
             QMessageBox.information(self, "Auto-Connect", "No suitable clients found for auto patching.")
         self.refresh()
+
+    # ----- Profiles actions -----
+    def save_current_as_profile(self):
+        try:
+            from PyQt5.QtWidgets import QInputDialog
+            # Refresh connections to ensure current
+            self.connections = self._list_connections()
+            name, ok = QInputDialog.getText(self, "Save Profile", "Profile name:")
+            if not ok or not name.strip():
+                return
+            key = name.strip()
+            # Store as list of [src, dst]
+            self.profiles[key] = [[s, d] for (s, d) in self.connections]
+            self._save_profiles()
+            self._refresh_profiles_combo()
+            self.profile_combo.setCurrentText(key)
+            QMessageBox.information(self, "Profile Saved", f"Saved profile '{key}' with {len(self.connections)} connections.")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Profile", f"Could not save profile: {e}")
+
+    def apply_selected_profile(self):
+        try:
+            name = self.profile_combo.currentText().strip()
+            if not name or name not in self.profiles:
+                return
+            pairs = self.profiles.get(name, [])
+            applied = 0
+            for s, d in pairs:
+                try:
+                    # Only connect if both ports exist now
+                    if self._port_exists(s) and self._port_exists(d):
+                        self._jack_connect(s, d)
+                        applied += 1
+                except Exception:
+                    pass
+            self.refresh()
+            QMessageBox.information(self, "Profile Applied", f"Applied {applied}/{len(pairs)} connections from '{name}'.")
+        except Exception as e:
+            QMessageBox.critical(self, "Apply Profile", f"Could not apply profile: {e}")
+
+    def delete_selected_profile(self):
+        try:
+            name = self.profile_combo.currentText().strip()
+            if not name or name not in self.profiles:
+                return
+            reply = QMessageBox.question(self, "Delete Profile",
+                                         f"Delete profile '{name}'? This cannot be undone.",
+                                         QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+            self.profiles.pop(name, None)
+            self._save_profiles()
+            self._refresh_profiles_combo()
+        except Exception as e:
+            QMessageBox.critical(self, "Delete Profile", f"Could not delete profile: {e}")
+
+    def _port_exists(self, port_full: str) -> bool:
+        try:
+            # Quick membership check in parsed ports
+            client = port_full.split(":", 1)[0]
+            d = self.ports.get(client, {})
+            return (port_full in d.get("in", [])) or (port_full in d.get("out", []))
+        except Exception:
+            return False
 
     def emergency_disconnect(self):
         reply = QMessageBox.warning(self, "EMERGENCY DISCONNECT",
@@ -4582,7 +4703,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.9")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.10")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4650,7 +4771,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.9")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.10")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -4732,7 +4853,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.9")
+    app.setApplicationVersion("3.4.10")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
