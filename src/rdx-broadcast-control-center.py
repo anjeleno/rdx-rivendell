@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.5
+RDX Professional Broadcast Control Center v3.4.6
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -2588,8 +2588,33 @@ class ServiceControlTab(QWidget):
             # jackd direct
             cmd = self._build_jackd_command()
             try:
-                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                return True, f"Launched JACK: {' '.join(cmd)}"
+                # Guard: if ALSA backend selected without device, refuse to start implicitly
+                try:
+                    backend = self.jack_settings.get("backend", "alsa").lower()
+                except Exception:
+                    backend = "alsa"
+                if backend == "alsa" and not self.jack_settings.get("device", "").strip():
+                    return False, "ALSA backend selected but no device set. RDX will not auto-pick a device.\nSet Device in JACK Settings or switch backend to Dummy."
+
+                # Write jackd output to a per-user log for diagnostics
+                log_path = Path.home() / ".config" / "rdx" / "jackd.log"
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(log_path, 'ab', buffering=0) as lf:
+                    proc = subprocess.Popen(cmd, stdout=lf, stderr=lf, start_new_session=True)
+                # Brief grace period then verify
+                time.sleep(0.5)
+                if self._jack_is_running():
+                    return True, f"Launched JACK: {' '.join(cmd)}"
+                # Wait a bit longer in case ALSA needed time
+                time.sleep(1.0)
+                if self._jack_is_running():
+                    return True, f"Launched JACK: {' '.join(cmd)}"
+                # Read last lines from log for error detail
+                try:
+                    tail = self._tail_file(log_path, 40)
+                except Exception:
+                    tail = ""
+                return False, ("jackd failed to start. Last log lines:\n" + tail).strip()
             except FileNotFoundError:
                 return False, "'jackd' not found in PATH. Install JACK (jackd/jackd2)."
             except Exception as e:
@@ -2728,6 +2753,14 @@ class ServiceControlTab(QWidget):
         except Exception:
             pass
         return {}
+
+    def _tail_file(self, path: Path, n: int = 60) -> str:
+        try:
+            data = path.read_text(errors='ignore')
+            lines = data.splitlines()
+            return "\n".join(lines[-n:])
+        except Exception:
+            return ""
 
     def _apply_jack_manage_mode_to_controls(self):
         manage = self.jack_settings.get("manage", True)
@@ -4336,7 +4369,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.5")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.6")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4404,7 +4437,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.5")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.6")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -4486,7 +4519,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.5")
+    app.setApplicationVersion("3.4.6")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

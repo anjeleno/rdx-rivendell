@@ -10,6 +10,17 @@
 ### Packaging
 - Bumped to 3.4.5 and rebuilt the `.deb`.
 
+## v3.4.6 (2025-10-24)
+### Changed
+- Respect JACK backend selection strictly. Removed automatic ALSA device selection to avoid switching users from Dummy to ALSA.
+- If backend=ALSA and no device is set, Start now fails fast with a clear message instead of guessing a device.
+
+### Diagnostics
+- jackd logs are still written to `~/.config/rdx/jackd.log` when starting in jackd mode.
+
+### Packaging
+- Rebuilt as 3.4.6.
+
 ## v3.4.4 (2025-10-24)
 ### Changed
 - Version bump and rebuild to roll up the latest hotfixes and keep package metadata aligned with in-app version strings.
