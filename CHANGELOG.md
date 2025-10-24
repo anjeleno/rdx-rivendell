@@ -14,6 +14,13 @@
 ### Notes
 - This is an initial, lightweight visualizer intended to complement the existing Patchboard. Future iterations will add draggable layout and per-edge persistence.
 
+## v3.4.2 (2025-10-23)
+### Fixed
+- Hotfix: Restored protected-pairs persistence methods inside `JackMatrixTab` to prevent `AttributeError: 'JackMatrixTab' object has no attribute '_load_protected_pairs'` on startup.
+
+### Packaging
+- Bumped `.deb` to 3.4.2 so the fix is delivered immediately.
+
 ## v3.4.0 (2025-10-23)
 ### Added
 - JACK jackdbus mode in Service Control: start/stop/restart via `jack_control`, with parameters applied using `ds/dps/eps`.

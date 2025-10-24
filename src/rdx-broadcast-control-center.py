@@ -960,6 +960,38 @@ class JackMatrixTab(QWidget):
         self._load_protected_pairs()
         self.setup_ui()
 
+    # ---- Persistence for protected pairs (Matrix) ----
+    def _config_dir(self) -> Path:
+        p = Path.home() / ".config" / "rdx"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return p
+
+    def _prot_file(self) -> Path:
+        return self._config_dir() / "jack_protected.json"
+
+    def _load_protected_pairs(self):
+        try:
+            pf = self._prot_file()
+            if pf.exists():
+                with open(pf, 'r') as f:
+                    data = json.load(f)
+                pairs = data.get('pairs', [])
+                if isinstance(pairs, list):
+                    self.critical_pairs = set(str(x) for x in pairs)
+        except Exception:
+            self.critical_pairs = set()
+
+    def _save_protected_pairs(self):
+        try:
+            pf = self._prot_file()
+            with open(pf, 'w') as f:
+                json.dump({"pairs": sorted(list(self.critical_pairs))}, f, indent=2)
+        except Exception:
+            pass
+
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
@@ -3941,7 +3973,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.1")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.2")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4009,7 +4041,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.1")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.2")
 
     # ---- System tray ----
     def _setup_tray(self):
