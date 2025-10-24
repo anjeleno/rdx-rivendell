@@ -1091,6 +1091,343 @@ class JackMatrixTab(QWidget):
         # Initialize
         self.refresh_jack_connections()
 
+    # ---- JACK helpers (Matrix) ----
+    def refresh_jack_connections(self):
+        """Refresh JACK ports and update UI elements."""
+        try:
+            # Check if JACK is running
+            try:
+                base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=0.7)
+            except subprocess.TimeoutExpired:
+                self.jack_status_label.setText("Status: ⏳ JACK Probe Timed Out")
+                self.jack_status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                return
+            if base.returncode != 0:
+                self.jack_status_label.setText("Status: ❌ JACK Not Running")
+                self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                self.ports = {}
+                self.jack_clients = []
+                self.source_combo.clear()
+                self.dest_combo.clear()
+                self.jack_info.setPlainText("JACK is not running. Start JACK and refresh.")
+                return
+            # Ports with properties
+            try:
+                res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True, timeout=0.7)
+            except subprocess.TimeoutExpired:
+                res = subprocess.CompletedProcess(args=["jack_lsp","-p"], returncode=1, stdout=base.stdout, stderr="")
+            out = res.stdout if res.returncode == 0 else base.stdout
+            self.ports = self._parse_jack_ports(out)
+            self.jack_clients = sorted(list(self.ports.keys()))
+            # Populate combos
+            self._populate_combos()
+            self._populate_port_combos()
+            # Info text
+            self._update_info()
+            self.jack_status_label.setText("Status: ✅ JACK Running")
+            self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+        except FileNotFoundError:
+            self.jack_status_label.setText("Status: ❌ JACK Tools Not Found")
+            self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+
+    def _parse_jack_ports(self, txt: str) -> dict:
+        """Parse 'jack_lsp -p' output into {client: {in:[ports], out:[ports]}}."""
+        ports = {}
+        current_port = None
+        for raw in (txt or "").splitlines():
+            line = raw.rstrip()
+            if not line:
+                continue
+            if not line.startswith(" ") and ":" in line:
+                # Port line like 'client:port'
+                current_port = line.strip()
+                client = current_port.split(":", 1)[0]
+                ports.setdefault(client, {"in": [], "out": []})
+                pname = current_port.split(":", 1)[1].lower()
+                if "out" in pname and "in" not in pname:
+                    ports[client]["out"].append(current_port)
+                elif "in" in pname and "out" not in pname:
+                    ports[client]["in"].append(current_port)
+            elif line.strip().startswith("properties:") and current_port:
+                props = line.split(":", 1)[1]
+                client = current_port.split(":", 1)[0]
+                try:
+                    if current_port in ports.get(client, {}).get("in", []):
+                        ports[client]["in"].remove(current_port)
+                    if current_port in ports.get(client, {}).get("out", []):
+                        ports[client]["out"].remove(current_port)
+                except Exception:
+                    pass
+                if "output" in props:
+                    ports[client]["out"].append(current_port)
+                else:
+                    ports[client]["in"].append(current_port)
+        return ports
+
+    def _populate_combos(self):
+        def stereo_candidates(direction: str) -> list:
+            cands = []
+            for c, d in self.ports.items():
+                if len(d.get(direction, [])) >= 2:
+                    cands.append(c)
+            def key(name: str):
+                ln = name.lower(); score = 0
+                if "rivendell" in ln or ln.startswith("rd"): score -= 10
+                if "stereo" in ln: score -= 9
+                if "liquidsoap" in ln: score -= 8
+                if name.startswith("system"): score -= 7
+                return (score, name)
+            return [x for x in sorted(cands, key=key)]
+        srcs = stereo_candidates("out")
+        dsts = stereo_candidates("in")
+        cur_s = self.source_combo.currentText()
+        cur_d = self.dest_combo.currentText()
+        self.source_combo.clear(); self.source_combo.addItems(srcs)
+        self.dest_combo.clear(); self.dest_combo.addItems(dsts)
+        if cur_s in srcs:
+            self.source_combo.setCurrentText(cur_s)
+        if cur_d in dsts:
+            self.dest_combo.setCurrentText(cur_d)
+
+    def _populate_port_combos(self):
+        outs = []; ins = []
+        for c, d in self.ports.items():
+            outs.extend(d.get("out", []))
+            ins.extend(d.get("in", []))
+        def keyp(p: str):
+            client, pn = p.split(":", 1)
+            return (client.lower(), pn.lower())
+        outs.sort(key=keyp); ins.sort(key=keyp)
+        def label(p: str) -> str:
+            client, pn = p.split(":", 1)
+            pretty_c = self._pretty_client(client)
+            pretty_p = self._pretty_port_name(pn)
+            return f"{pretty_c}: {pretty_p}  ({pn})"
+        cur_sp = self.port_src_combo.currentData() if self.port_src_combo.count() else None
+        cur_dp = self.port_dst_combo.currentData() if self.port_dst_combo.count() else None
+        self.port_src_combo.clear();
+        for p in outs:
+            self.port_src_combo.addItem(label(p), p)
+        self.port_dst_combo.clear();
+        for p in ins:
+            self.port_dst_combo.addItem(label(p), p)
+        if cur_sp:
+            idx = self.port_src_combo.findData(cur_sp)
+            if idx >= 0:
+                self.port_src_combo.setCurrentIndex(idx)
+        if cur_dp:
+            idx = self.port_dst_combo.findData(cur_dp)
+            if idx >= 0:
+                self.port_dst_combo.setCurrentIndex(idx)
+
+    def _update_info(self):
+        lines = []
+        for c in self.jack_clients:
+            ins = len(self.ports.get(c, {}).get("in", []))
+            outs = len(self.ports.get(c, {}).get("out", []))
+            lines.append(f"{c}: in={ins} out={outs}")
+        self.jack_info.setPlainText("\n".join(lines) if lines else "No JACK clients detected.")
+
+    def _stereo_pair(self, client: str, direction: str) -> list:
+        ports = list(self.ports.get(client, {}).get(direction, []))
+        def sort_key(p: str):
+            pn = p.split(":", 1)[1].lower()
+            if re.search(r"(^|[_\-:])l(eft)?($|[_\-:])", pn):
+                return (-2, pn)
+            if re.search(r"(^|[_\-:])r(ight)?($|[_\-:])", pn):
+                return (-1, pn)
+            m = re.search(r"(\d+)$", pn)
+            if m:
+                return (int(m.group(1)), pn)
+            return (999, pn)
+        ports.sort(key=sort_key)
+        return ports[:2]
+
+    def connect_selected_pair(self):
+        src = self.source_combo.currentText().strip()
+        dst = self.dest_combo.currentText().strip()
+        if not src or not dst or src == dst:
+            QMessageBox.warning(self, "Invalid Selection", "Choose distinct source and destination with stereo ports.")
+            return
+        key = f"{src}→{dst}"
+        if self.protect_checkbox.isChecked():
+            self.critical_pairs.add(key)
+            self._save_protected_pairs()
+        s_ports = self._stereo_pair(src, "out")
+        d_ports = self._stereo_pair(dst, "in")
+        if len(s_ports) < 2 or len(d_ports) < 2:
+            QMessageBox.warning(self, "Not Stereo", "Selected clients do not expose at least 2 ports each.")
+            return
+        ok = True; errs = []
+        for sp, dp in zip(s_ports, d_ports):
+            try:
+                self._jack_connect(sp, dp)
+            except Exception as e:
+                ok = False; errs.append(f"{sp} -> {dp}: {e}")
+        if ok:
+            QMessageBox.information(self, "Connected", f"{src} → {dst} (L/R)")
+        else:
+            QMessageBox.warning(self, "Partial Failure", "Some connections failed:\n" + "\n".join(errs))
+
+    def disconnect_selected_pair(self):
+        src = self.source_combo.currentText().strip()
+        dst = self.dest_combo.currentText().strip()
+        if not src or not dst or src == dst:
+            return
+        key = f"{src}→{dst}"
+        if key in self.critical_pairs:
+            reply = QMessageBox.question(self, "Protected Pair", f"{key} is protected. Disconnect anyway?",
+                                         QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+        s_ports = self._stereo_pair(src, "out")
+        d_ports = self._stereo_pair(dst, "in")
+        errs = []
+        for sp, dp in zip(s_ports, d_ports):
+            try:
+                self._jack_disconnect(sp, dp)
+            except Exception as e:
+                errs.append(f"{sp} -/-> {dp}: {e}")
+        if errs:
+            QMessageBox.warning(self, "Disconnect Issues", "\n".join(errs))
+        else:
+            QMessageBox.information(self, "Disconnected", f"{src} ⛓️ {dst}")
+
+    def unprotect_current_pair(self):
+        src = self.source_combo.currentText().strip()
+        dst = self.dest_combo.currentText().strip()
+        if not src or not dst or src == dst:
+            return
+        key = f"{src}→{dst}"
+        if key in self.critical_pairs:
+            self.critical_pairs.remove(key)
+            self._save_protected_pairs()
+            QMessageBox.information(self, "Unprotected", f"Removed protection for: {key}")
+        else:
+            QMessageBox.information(self, "Not Protected", f"Current pair is not protected: {key}")
+
+    def auto_connect(self):
+        def find_like(names, direction):
+            for c in self.jack_clients:
+                lc = c.lower()
+                if any(n in lc for n in names):
+                    if len(self.ports.get(c, {}).get(direction, [])) >= 2:
+                        return c
+            return None
+        rd = find_like(["rivendell", "rd"], "out") or find_like(["system"], "out")
+        st = find_like(["stereo tool", "stereotool", "stereo_tool", "thimeo"], "in")
+        ls_in = find_like(["liquidsoap"], "in")
+        ls_out = find_like(["liquidsoap"], "out")
+        sys_play = find_like(["system"], "in")
+        actions = []
+        if rd and st:
+            self.source_combo.setCurrentText(rd); self.dest_combo.setCurrentText(st)
+            self.connect_selected_pair(); actions.append(f"{rd}→{st}")
+        if st and ls_in:
+            self.source_combo.setCurrentText(st); self.dest_combo.setCurrentText(ls_in)
+            self.connect_selected_pair(); actions.append(f"{st}→{ls_in}")
+        if ls_out and sys_play:
+            self.source_combo.setCurrentText(ls_out); self.dest_combo.setCurrentText(sys_play)
+            self.connect_selected_pair(); actions.append(f"{ls_out}→{sys_play}")
+        if not actions:
+            QMessageBox.information(self, "Auto-Connect", "No suitable clients found for auto patching.")
+
+    def emergency_disconnect(self):
+        reply = QMessageBox.warning(self, "EMERGENCY DISCONNECT",
+                                    "⚠️ This will disconnect ALL non-critical JACK connections!\n\nContinue?",
+                                    QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            try:
+                res = subprocess.run(["jack_lsp", "-c"], capture_output=True, text=True, timeout=0.7)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError("jack_lsp -c timed out")
+            txt = res.stdout or ""
+            to_disc = []
+            cur_src = None
+            for line in txt.splitlines():
+                if not line:
+                    continue
+                if not line.startswith(" "):
+                    cur_src = line.strip(); continue
+                if line.strip().startswith("connections:"):
+                    continue
+                if cur_src and line.startswith("    "):
+                    dst = line.strip()
+                    s_client = cur_src.split(":", 1)[0]
+                    d_client = dst.split(":", 1)[0]
+                    key = f"{s_client}→{d_client}"
+                    if key not in self.critical_pairs:
+                        to_disc.append((cur_src, dst))
+            errs = []
+            for sp, dp in to_disc:
+                try:
+                    self._jack_disconnect(sp, dp)
+                except Exception as e:
+                    errs.append(f"{sp} -/-> {dp}: {e}")
+            if errs:
+                QMessageBox.warning(self, "Disconnect Issues", "\n".join(errs))
+            else:
+                QMessageBox.information(self, "Emergency Disconnect", "All non-critical connections disconnected.")
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", f"Could not enumerate connections: {e}")
+
+    # ---- Low-level JACK ops (Matrix) ----
+    def _jack_connect(self, src_port: str, dst_port: str):
+        try:
+            res = subprocess.run(["jack_connect", src_port, dst_port], capture_output=True, text=True)
+            if res.returncode != 0:
+                if self._is_connected(src_port, dst_port):
+                    return
+                stderr = (res.stderr or '').strip(); stdout = (res.stdout or '').strip()
+                raise RuntimeError(stderr or stdout or f"jack_connect failed with code {res.returncode}")
+        except FileNotFoundError:
+            raise RuntimeError("jack_connect not found in PATH")
+
+    def _jack_disconnect(self, src_port: str, dst_port: str):
+        try:
+            subprocess.run(["jack_disconnect", src_port, dst_port], capture_output=True, text=True)
+        except FileNotFoundError:
+            raise RuntimeError("jack_disconnect not found in PATH")
+
+    def _is_connected(self, src_port: str, dst_port: str) -> bool:
+        try:
+            res = subprocess.run(["jack_lsp", "-c"], capture_output=True, text=True)
+            txt = res.stdout or ""; cur = None
+            for line in txt.splitlines():
+                if not line:
+                    continue
+                if not line.startswith(" "):
+                    cur = line.strip(); continue
+                if cur == src_port and line.startswith("    ") and line.strip() == dst_port:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    # ---- Manual per-port connect/disconnect ----
+    def connect_manual_ports(self):
+        sp = self.port_src_combo.currentData()
+        dp = self.port_dst_combo.currentData()
+        if not sp or not dp:
+            return
+        try:
+            self._jack_connect(sp, dp)
+            QMessageBox.information(self, "Connected", f"{sp} → {dp}")
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", str(e))
+
+    def disconnect_manual_ports(self):
+        sp = self.port_src_combo.currentData()
+        dp = self.port_dst_combo.currentData()
+        if not sp or not dp:
+            return
+        try:
+            self._jack_disconnect(sp, dp)
+            QMessageBox.information(self, "Disconnected", f"{sp} ⛓️ {dp}")
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", str(e))
 
 class JackGraphTab(QWidget):
     """Visual JACK graph: clients/ports as nodes with connectable edges and lock/unlock.
@@ -3973,7 +4310,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.2")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.3")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4041,7 +4378,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.2")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.3")
 
     # ---- System tray ----
     def _setup_tray(self):

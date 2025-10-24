@@ -1,5 +1,14 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.3 (2025-10-24)
+### Fixed
+- Startup crash on some installs: `AttributeError: 'JackMatrixTab' object has no attribute 'refresh_jack_connections'`.
+  - Moved the full set of JACK Patchboard (Matrix) methods back inside `JackMatrixTab` so they are defined before use.
+  - This restores proper behavior for Refresh, per-port connect/disconnect, stereo pair connect/disconnect, Auto-Connect, and Emergency Disconnect.
+
+### Packaging
+- Version bumped to 3.4.3 to deliver the hotfix immediately.
+
 ## v3.4.1 (2025-10-23)
 ### Added
 - JACK Graph (preview): New visual graph tab that shows JACK clients/ports as nodes and connections as edges.
