@@ -2500,11 +2500,11 @@ class ServiceControlTab(QWidget):
             nperiods = int(s.get("nperiods", 2) or 2)
             cmd += ["-r", str(rate), "-p", str(period), "-n", str(nperiods)]
         # Simple dummy backend params: sample rate and period
+        # Note: dummy driver does NOT support '-n' (nperiods). Only ALSA uses '-n'.
         if s.get("backend", "alsa").lower() == "dummy":
             rate = int(s.get("rate", 48000) or 48000)
             period = int(s.get("period", 256) or 256)
-            nperiods = int(s.get("nperiods", 2) or 2)
-            cmd += ["-r", str(rate), "-p", str(period), "-n", str(nperiods)]
+            cmd += ["-r", str(rate), "-p", str(period)]
         extra = s.get("extra_args", "").strip()
         if extra:
             try:

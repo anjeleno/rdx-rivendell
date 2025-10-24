@@ -20,8 +20,14 @@ shift || true
 NOTES_ARGS=( )
 FROM_CHANGELOG=false
 if [[ ${1:-} == "--notes-file" && -n ${2:-} ]]; then
-  NOTES_ARGS=( --notes-file "$2" )
-  shift 2 || true
+  # Safety: if CHANGELOG.md is passed, prefer extracting only this tag's section
+  if [[ "$2" == "CHANGELOG.md" || "$2" == "./CHANGELOG.md" ]]; then
+    FROM_CHANGELOG=true
+    shift 2 || true
+  else
+    NOTES_ARGS=( --notes-file "$2" )
+    shift 2 || true
+  fi
 elif [[ ${1:-} == "--from-changelog" ]]; then
   FROM_CHANGELOG=true
   shift 1 || true
