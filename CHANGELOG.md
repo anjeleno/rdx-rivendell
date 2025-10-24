@@ -1,5 +1,18 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.0 (2025-10-23)
+### Added
+- JACK jackdbus mode in Service Control: start/stop/restart via `jack_control`, with parameters applied using `ds/dps/eps`.
+- ALSA device enumeration in JACK Settings: editable dropdown populated from `aplay -l`, plus a Refresh button.
+- Presets in JACK Settings: "Live Low Latency", "Production Stable", and "Dummy (No HW)" apply typical backend/rate/period/nperiods/realtime setups.
+- Adopt/Show Current: detects running JACK configuration (jackdbus via `jack_control`, or jackd command-line fallback) and fills the dialog or shows a summary.
+
+### Improved
+- Unified JACK start/stop helpers: both modes (jackd/jackdbus) route through consistent helpers with clearer error messages and status updates.
+
+### Notes
+- Visual graph-based patchboard is next. Current per-port manual patching remains available in the JACK tab and protected pairs behavior is unchanged.
+
 ## v3.3.5 (2025-10-23)
 ### Improved
 - Build-time guard: Added an AST-based sanity check in the builder to detect any use of `self` at class scope (outside of methods). The builder will try a safe one-pass normalization for common mis-indents (status bar/title lines) and abort the build if violations remain. This prevents shipping packages that would crash with `NameError` at startup.

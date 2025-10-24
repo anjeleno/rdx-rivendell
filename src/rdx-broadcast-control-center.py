@@ -1679,6 +1679,7 @@ class ServiceControlTab(QWidget):
     def _load_jack_settings(self) -> dict:
         d = {
             "manage": True,            # Whether RDX should manage JACK server
+            "mode": "jackd",          # jackd | jackdbus
             "backend": "alsa",        # alsa | dummy
             "device": "",             # e.g., hw:PCH or hw:0
             "rate": 48000,             # Sample rate
@@ -1743,6 +1744,221 @@ class ServiceControlTab(QWidget):
                 # Fallback: append as a single token to avoid crash
                 cmd.append(extra)
         return cmd
+
+    def _jackdbus_preview_commands(self) -> list:
+        """Return a list of strings representing jack_control commands to apply settings."""
+        s = self.jack_settings
+        cmds = []
+        backend = s.get("backend", "alsa")
+        cmds.append(f"jack_control ds {backend}")
+        # Engine params
+        rt = str(bool(s.get("realtime", True))).lower()
+        cmds.append(f"jack_control eps realtime {rt}")
+        # Driver params
+        if backend.lower() == "alsa":
+            dev = s.get("device", "").strip()
+            if dev:
+                cmds.append(f"jack_control dps device {shlex.quote(dev)}")
+            rate = int(s.get("rate", 48000) or 48000)
+            period = int(s.get("period", 256) or 256)
+            nperiods = int(s.get("nperiods", 2) or 2)
+            cmds.append(f"jack_control dps rate {rate}")
+            cmds.append(f"jack_control dps period {period}")
+            cmds.append(f"jack_control dps nperiods {nperiods}")
+        elif backend.lower() == "dummy":
+            rate = int(s.get("rate", 48000) or 48000)
+            period = int(s.get("period", 256) or 256)
+            nperiods = int(s.get("nperiods", 2) or 2)
+            cmds.append(f"jack_control dps rate {rate}")
+            cmds.append(f"jack_control dps period {period}")
+            cmds.append(f"jack_control dps nperiods {nperiods}")
+        cmds.append("jack_control start")
+        return cmds
+
+    def _start_jack_server(self) -> tuple:
+        """Start JACK according to selected mode. Returns (ok: bool, message: str)."""
+        mode = self.jack_settings.get("mode", "jackd").lower()
+        if mode == "jackdbus":
+            # Apply settings via jack_control then start
+            try:
+                # Best-effort stop before reconfiguring
+                subprocess.run(["jack_control", "stop"], check=False)
+                backend = self.jack_settings.get("backend", "alsa")
+                subprocess.run(["jack_control", "ds", backend], check=False)
+                # Engine params
+                rt = str(bool(self.jack_settings.get("realtime", True))).lower()
+                subprocess.run(["jack_control", "eps", "realtime", rt], check=False)
+                # Driver params
+                if backend.lower() == "alsa":
+                    dev = self.jack_settings.get("device", "").strip()
+                    if dev:
+                        subprocess.run(["jack_control", "dps", "device", dev], check=False)
+                    rate = int(self.jack_settings.get("rate", 48000) or 48000)
+                    period = int(self.jack_settings.get("period", 256) or 256)
+                    nperiods = int(self.jack_settings.get("nperiods", 2) or 2)
+                    subprocess.run(["jack_control", "dps", "rate", str(rate)], check=False)
+                    subprocess.run(["jack_control", "dps", "period", str(period)], check=False)
+                    subprocess.run(["jack_control", "dps", "nperiods", str(nperiods)], check=False)
+                else:
+                    rate = int(self.jack_settings.get("rate", 48000) or 48000)
+                    period = int(self.jack_settings.get("period", 256) or 256)
+                    nperiods = int(self.jack_settings.get("nperiods", 2) or 2)
+                    subprocess.run(["jack_control", "dps", "rate", str(rate)], check=False)
+                    subprocess.run(["jack_control", "dps", "period", str(period)], check=False)
+                    subprocess.run(["jack_control", "dps", "nperiods", str(nperiods)], check=False)
+                # Start
+                r = subprocess.run(["jack_control", "start"], capture_output=True, text=True)
+                if r.returncode == 0:
+                    return True, "Started JACK (jackdbus)"
+                return False, (r.stderr or r.stdout or "jack_control start failed").strip()
+            except FileNotFoundError:
+                return False, "'jack_control' not found in PATH. Install jackdbus (jackd2)."
+            except Exception as e:
+                return False, f"Error starting jackdbus: {e}"
+        else:
+            # jackd direct
+            cmd = self._build_jackd_command()
+            try:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return True, f"Launched JACK: {' '.join(cmd)}"
+            except FileNotFoundError:
+                return False, "'jackd' not found in PATH. Install JACK (jackd/jackd2)."
+            except Exception as e:
+                return False, f"Failed to start jackd: {e}"
+
+    def _stop_jack_server(self):
+        """Best-effort stop regardless of mode."""
+        try:
+            subprocess.run(["jack_control", "stop"], check=False)
+            subprocess.run(["jack_control", "exit"], check=False)
+        except Exception:
+            pass
+        try:
+            subprocess.run(["killall", "-q", "jackd"], check=False)
+        except Exception:
+            pass
+
+    def _alsa_devices(self) -> list:
+        """Return a list of ALSA device identifiers like 'hw:0', 'hw:PCH'."""
+        devs = []
+        try:
+            r = subprocess.run(["bash", "-lc", "aplay -l"], capture_output=True, text=True, timeout=1.5)
+            out = (r.stdout or "") + (r.stderr or "")
+            # Parse lines like: card 0: PCH [HDA Intel PCH], device 0: ALC... [..]
+            cards = {}
+            for line in out.splitlines():
+                line = line.strip()
+                m = re.match(r"card\s+(\d+):\s+([^\s\[]+)", line)
+                if m:
+                    cid = m.group(1)
+                    cname = m.group(2)
+                    cards[cid] = cname
+            for cid, cname in cards.items():
+                devs.append(f"hw:{cid}")
+                if cname and cname != cid:
+                    devs.append(f"hw:{cname}")
+        except Exception:
+            pass
+        # Always include defaults
+        base = ["default", "hw:0", "hw:1"]
+        seen = set()
+        out = []
+        for dname in base + devs:
+            if dname and dname not in seen:
+                seen.add(dname)
+                out.append(dname)
+        return out
+
+    def _probe_running_jack_config(self) -> dict:
+        """Attempt to detect current running JACK configuration.
+        Returns a dict with keys: mode, backend, device, rate, period, nperiods, realtime.
+        Empty dict if not detected.
+        """
+        # First try jackdbus via jack_control
+        try:
+            st = subprocess.run(["jack_control", "status"], capture_output=True, text=True, timeout=1.0)
+            sout = (st.stdout or "") + (st.stderr or "")
+            if st.returncode == 0 and ("started" in sout.lower() or "running" in sout.lower()):
+                res = {"mode": "jackdbus"}
+                # Driver
+                ds = subprocess.run(["jack_control", "ds"], capture_output=True, text=True, timeout=1.0)
+                dso = (ds.stdout or ds.stderr or "").strip().lower()
+                # Heuristics: often prints just the driver name
+                drv = None
+                for cand in ("alsa", "dummy", "firewire", "coreaudio"):
+                    if cand in dso:
+                        drv = cand
+                        break
+                if drv:
+                    res["backend"] = drv
+                # Params
+                dp = subprocess.run(["jack_control", "dp"], capture_output=True, text=True, timeout=1.0)
+                ep = subprocess.run(["jack_control", "ep"], capture_output=True, text=True, timeout=1.0)
+                txt = (dp.stdout or "") + "\n" + (ep.stdout or "")
+                def _grab(k, cast=str):
+                    m = re.search(rf"\b{k}\s*=\s*([\w:\-\.]+)", txt)
+                    if not m:
+                        return None
+                    val = m.group(1)
+                    try:
+                        if cast is bool:
+                            return str(val).lower() in ("1", "true", "yes", "on")
+                        return cast(val)
+                    except Exception:
+                        return None
+                res["device"] = _grab("device", str) or ""
+                res["rate"] = _grab("rate", int)
+                res["period"] = _grab("period", int)
+                res["nperiods"] = _grab("nperiods", int)
+                res["realtime"] = _grab("realtime", bool)
+                return {k: v for k, v in res.items() if v is not None}
+        except Exception:
+            pass
+        # Fallback: parse jackd command line
+        try:
+            ps = subprocess.run(["bash", "-lc", "ps -C jackd -o args="], capture_output=True, text=True, timeout=1.0)
+            args = (ps.stdout or "").strip()
+            if args:
+                parts = shlex.split(args)
+                res = {"mode": "jackd", "realtime": False}
+                i = 0
+                backend = None
+                device = None
+                while i < len(parts):
+                    t = parts[i]
+                    if t == "-R":
+                        res["realtime"] = True
+                        i += 1
+                        continue
+                    if t == "-d" and i + 1 < len(parts):
+                        val = parts[i+1]
+                        if backend is None:
+                            backend = val
+                        else:
+                            device = val
+                        i += 2
+                        continue
+                    if t == "-r" and i + 1 < len(parts):
+                        res["rate"] = int(parts[i+1])
+                        i += 2
+                        continue
+                    if t == "-p" and i + 1 < len(parts):
+                        res["period"] = int(parts[i+1])
+                        i += 2
+                        continue
+                    if t == "-n" and i + 1 < len(parts):
+                        res["nperiods"] = int(parts[i+1])
+                        i += 2
+                        continue
+                    i += 1
+                if backend:
+                    res["backend"] = backend
+                if device:
+                    res["device"] = device
+                return res
+        except Exception:
+            pass
+        return {}
 
     def _apply_jack_manage_mode_to_controls(self):
         manage = self.jack_settings.get("manage", True)
@@ -1966,16 +2182,13 @@ class ServiceControlTab(QWidget):
                 if self._jack_is_running():
                     QMessageBox.information(self, "JACK Already Running", "JACK audio server is already running.")
                     return
-                cmd = self._build_jackd_command()
-                # Start jackd detached; errors will still show if immediate failure
-                try:
-                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                except FileNotFoundError:
-                    QMessageBox.critical(self, "JACK Not Installed", "'jackd' not found in PATH. Install JACK (jackd/jackd2).")
+                ok, msg = self._start_jack_server()
+                if not ok:
+                    QMessageBox.critical(self, "JACK Start Failed", msg)
                     return
                 # Brief grace period then probe
                 QTimer.singleShot(800, self.update_all_status)
-                QMessageBox.information(self, "JACK Start Requested", f"Launched JACK: {' '.join(cmd)}")
+                QMessageBox.information(self, "JACK Start Requested", msg)
 
             elif service_key == 'liquidsoap':
                 # Start liquidsoap with generated config
@@ -2096,9 +2309,7 @@ class ServiceControlTab(QWidget):
                                             "RDX is set to not manage the JACK server, so it won't stop it.")
                     return
                 # Stop JACK (best-effort)
-                subprocess.run(["killall", "-q", "jackd"], check=False)
-                # Also attempt D-Bus jack control if available
-                subprocess.run(["jack_control", "exit"], check=False)
+                self._stop_jack_server()
                 QTimer.singleShot(500, self.update_all_status)
                 QMessageBox.information(self, "JACK Stop Requested", "Requested JACK shutdown.")
                 
@@ -2129,17 +2340,14 @@ class ServiceControlTab(QWidget):
                     QMessageBox.information(self, "JACK Managed Externally",
                                             "RDX is set to not manage the JACK server.")
                     return
-                subprocess.run(["killall", "-q", "jackd"], check=False)
-                subprocess.run(["jack_control", "exit"], check=False)
+                self._stop_jack_server()
                 time.sleep(0.8)
-                cmd = self._build_jackd_command()
-                try:
-                    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                except FileNotFoundError:
-                    QMessageBox.critical(self, "JACK Not Installed", "'jackd' not found in PATH. Install JACK (jackd/jackd2).")
+                ok, msg = self._start_jack_server()
+                if not ok:
+                    QMessageBox.critical(self, "JACK Restart Failed", msg)
                     return
                 QTimer.singleShot(900, self.update_all_status)
-                QMessageBox.information(self, "JACK Restart Requested", f"Restarted JACK with: {' '.join(cmd)}")
+                QMessageBox.information(self, "JACK Restart Requested", msg)
 
             elif service_key == 'liquidsoap':
                 # Restart liquidsoap
@@ -2516,7 +2724,7 @@ verify
         QMessageBox.information(self, "Configure Service", f"Configuration for {service_info['name']} will open the appropriate settings.")
 
     def _open_jack_settings_dialog(self):
-        from PyQt5.QtWidgets import QFormLayout, QDialog, QDialogButtonBox, QComboBox, QCheckBox, QLineEdit, QSpinBox
+        from PyQt5.QtWidgets import QFormLayout, QDialog, QDialogButtonBox, QComboBox, QCheckBox, QLineEdit, QSpinBox, QHBoxLayout, QPushButton
         dlg = QDialog(self)
         dlg.setWindowTitle("JACK Settings")
         form = QFormLayout(dlg)
@@ -2526,6 +2734,14 @@ verify
         manage_cb.setChecked(self.jack_settings.get("manage", True))
         form.addRow("Management:", manage_cb)
 
+        # Mode selector
+        mode_combo = QComboBox()
+        mode_combo.addItems(["jackd", "jackdbus"])  # direct or jackdbus via jack_control
+        cur_mode = self.jack_settings.get("mode", "jackd")
+        midx = mode_combo.findText(cur_mode)
+        mode_combo.setCurrentIndex(max(0, midx))
+        form.addRow("Mode:", mode_combo)
+
         # Backend selector
         backend_combo = QComboBox()
         backend_combo.addItems(["alsa", "dummy"])  # conservative set; more can be added later
@@ -2534,10 +2750,31 @@ verify
         backend_combo.setCurrentIndex(max(0, idx))
         form.addRow("Backend:", backend_combo)
 
-        # ALSA device
-        dev_edit = QLineEdit(self.jack_settings.get("device", ""))
-        dev_edit.setPlaceholderText("e.g., hw:PCH or hw:0 (leave blank for default)")
-        form.addRow("ALSA Device:", dev_edit)
+        # ALSA device with dropdown + refresh; editable
+        dev_row = QHBoxLayout()
+        dev_combo = QComboBox(); dev_combo.setEditable(True)
+        try:
+            for dname in self._alsa_devices():
+                dev_combo.addItem(dname)
+        except Exception:
+            pass
+        cur_dev = self.jack_settings.get("device", "")
+        if cur_dev and dev_combo.findText(cur_dev) < 0:
+            dev_combo.addItem(cur_dev)
+        if cur_dev:
+            dev_combo.setCurrentText(cur_dev)
+        dev_combo.setEditable(True)
+        dev_combo.setInsertPolicy(QComboBox.NoInsert)
+        dev_btn = QPushButton("Refresh")
+        def _refresh_devs():
+            devs = self._alsa_devices()
+            dev_combo.clear()
+            for dname in devs:
+                dev_combo.addItem(dname)
+        dev_btn.clicked.connect(_refresh_devs)
+        dev_row.addWidget(dev_combo)
+        dev_row.addWidget(dev_btn)
+        form.addRow("ALSA Device:", dev_row)
 
         # Numeric params
         rate_spin = QSpinBox(); rate_spin.setRange(8000, 192000); rate_spin.setSingleStep(1000)
@@ -2560,6 +2797,78 @@ verify
         extra_edit.setPlaceholderText("Extra jackd driver args (advanced)")
         form.addRow("Extra Args:", extra_edit)
 
+        # Presets row
+        presets_row = QHBoxLayout()
+        preset_combo = QComboBox(); preset_combo.addItems(["Select a preset…", "Live Low Latency", "Production Stable", "Dummy (No HW)"])
+        apply_preset_btn = QPushButton("Apply Preset")
+        def _apply_preset():
+            name = preset_combo.currentText()
+            if name == "Live Low Latency":
+                backend_combo.setCurrentText("alsa")
+                rate_spin.setValue(48000)
+                period_spin.setValue(128)
+                nper_spin.setValue(3)
+                rt_cb.setChecked(True)
+            elif name == "Production Stable":
+                backend_combo.setCurrentText("alsa")
+                rate_spin.setValue(48000)
+                period_spin.setValue(256)
+                nper_spin.setValue(2)
+                rt_cb.setChecked(True)
+            elif name == "Dummy (No HW)":
+                backend_combo.setCurrentText("dummy")
+                rate_spin.setValue(48000)
+                period_spin.setValue(256)
+                nper_spin.setValue(2)
+                rt_cb.setChecked(False)
+        apply_preset_btn.clicked.connect(_apply_preset)
+        presets_row.addWidget(preset_combo)
+        presets_row.addWidget(apply_preset_btn)
+        form.addRow("Presets:", presets_row)
+
+        # Adopt/show current row
+        adopt_row = QHBoxLayout()
+        adopt_btn = QPushButton("Adopt From Running")
+        show_btn = QPushButton("Show Current")
+        def _adopt():
+            cur = self._probe_running_jack_config()
+            if not cur:
+                QMessageBox.information(dlg, "No Running JACK", "Could not detect a running JACK configuration.")
+                return
+            # Update fields with detected
+            mode_combo.setCurrentText(cur.get("mode", mode_combo.currentText()))
+            backend_combo.setCurrentText(cur.get("backend", backend_combo.currentText()))
+            dval = cur.get("device", dev_combo.currentText())
+            if dval and dev_combo.findText(dval) < 0:
+                dev_combo.addItem(dval)
+            if dval:
+                dev_combo.setCurrentText(dval)
+            rate_spin.setValue(int(cur.get("rate", rate_spin.value())))
+            period_spin.setValue(int(cur.get("period", period_spin.value())))
+            nper_spin.setValue(int(cur.get("nperiods", nper_spin.value())))
+            rt_cb.setChecked(bool(cur.get("realtime", rt_cb.isChecked())))
+        def _show():
+            cur = self._probe_running_jack_config()
+            if not cur:
+                QMessageBox.information(dlg, "No Running JACK", "Could not detect a running JACK configuration.")
+                return
+            # Prepare summary
+            lines = [
+                f"Mode: {cur.get('mode','?')}",
+                f"Backend: {cur.get('backend','?')}",
+                f"Device: {cur.get('device','')}",
+                f"Rate: {cur.get('rate','?')}",
+                f"Period: {cur.get('period','?')}",
+                f"Nperiods: {cur.get('nperiods','?')}",
+                f"Realtime: {cur.get('realtime','?')}"
+            ]
+            QMessageBox.information(dlg, "Detected JACK Settings", "\n".join(lines))
+        adopt_btn.clicked.connect(_adopt)
+        show_btn.clicked.connect(_show)
+        adopt_row.addWidget(adopt_btn)
+        adopt_row.addWidget(show_btn)
+        form.addRow("Detect:", adopt_row)
+
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         form.addRow(buttons)
@@ -2569,8 +2878,9 @@ verify
         if dlg.exec_() == QDialog.Accepted:
             data = {
                 "manage": manage_cb.isChecked(),
+                "mode": mode_combo.currentText(),
                 "backend": backend_combo.currentText(),
-                "device": dev_edit.text().strip(),
+                "device": dev_combo.currentText().strip(),
                 "rate": int(rate_spin.value()),
                 "period": int(period_spin.value()),
                 "nperiods": int(nper_spin.value()),
@@ -2580,8 +2890,12 @@ verify
             self._save_jack_settings(data)
             self._apply_jack_manage_mode_to_controls()
             # Show preview of resulting command
-            cmd = self._build_jackd_command()
-            QMessageBox.information(self, "JACK Settings Saved", f"JACK settings saved.\n\nCommand preview:\n{' '.join(cmd)}")
+            if data.get("mode", "jackd") == "jackdbus":
+                preview = "\n".join(self._jackdbus_preview_commands())
+                QMessageBox.information(self, "JACK Settings Saved", f"JACK settings saved.\n\njack_control sequence:\n{preview}")
+            else:
+                cmd = self._build_jackd_command()
+                QMessageBox.information(self, "JACK Settings Saved", f"JACK settings saved.\n\nCommand preview:\n{' '.join(cmd)}")
         
     def start_all_services(self):
         """Start all services in correct order"""
