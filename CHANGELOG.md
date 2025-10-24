@@ -1,4 +1,28 @@
+## v3.4.11 (2025-10-24)
+### Added
+- Profiles: Generate… button to propose a smart stereo chain (VLC→Rivendell, Rivendell→Stereo Tool, Stereo Tool→Liquidsoap, Liquidsoap→system) from detected ports; save, apply.
+
+### Fixed
+- Jack connect robustness: tolerate 'already connected' errors, slightly longer timeouts, and clearer direction check when connecting manually.
+
+### Packaging
+- Bumped to 3.4.11 and rebuilt `.deb`.
+
 # RDX Broadcast Control Center Changelog
+
+## v3.4.11 (2025-10-24)
+### Fixed
+- JACK connect reliability: treat "already connected" and generic "cannot connect" as success when the connection already exists.
+
+### Changed
+- Jack Graph UI: removed on-tab dropdowns; Profiles are now managed via a dialog (Profiles…) and a Generate button.
+- Clear visual state: each cable shows 🔐 when locked and ⚠️ when unlocked; right‑click menu disables Disconnect for locked cables.
+
+### Added
+- Generate Profile: proposes a VLC→Rivendell, Rivendell→Stereo Tool, Stereo Tool→Liquidsoap, and Liquidsoap→system chain based on detected ports; saves and optionally applies it.
+
+### Packaging
+- Bumped to 3.4.11 and rebuilt `.deb`.
 
 ## v3.4.10 (2025-10-24)
 ### Added
