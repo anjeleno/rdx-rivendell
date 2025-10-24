@@ -1,9 +1,9 @@
-## v3.4.11 (2025-10-24)
-### Added
-- Profiles: Generate… button to propose a smart stereo chain (VLC→Rivendell, Rivendell→Stereo Tool, Stereo Tool→Liquidsoap, Liquidsoap→system) from detected ports; save, apply.
-
+## v3.4.12 (2025-10-24)
 ### Fixed
-- Jack connect robustness: tolerate 'already connected' errors, slightly longer timeouts, and clearer direction check when connecting manually.
+- Hotfix: Restored Jack Graph tab. An internal reference to a removed method during initialization caused a silent exception and the tab didn’t appear. The call is now removed.
+
+### Packaging
+- Rebuilt `.deb` as 3.4.12.
 
 ### Packaging
 - Bumped to 3.4.11 and rebuilt `.deb`.

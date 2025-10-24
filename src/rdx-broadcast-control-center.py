@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.11
+RDX Professional Broadcast Control Center v3.4.12
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1577,7 +1577,7 @@ class JackGraphTab(QWidget):
                     self.profiles = {str(k): list(v) for k, v in data.items()}
         except Exception:
             self.profiles = {}
-        self._refresh_profiles_combo()
+        # No on-tab profile combo to refresh; dialog lists are built on demand
 
     def _save_profiles(self):
         try:
@@ -4870,7 +4870,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.11")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.12")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4938,7 +4938,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.11")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.12")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -5020,7 +5020,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.11")
+    app.setApplicationVersion("3.4.12")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
