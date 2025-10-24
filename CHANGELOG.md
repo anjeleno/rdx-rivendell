@@ -1,5 +1,15 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.7 (2025-10-24)
+### Fixed
+- jackd dummy backend: omit `-n` (nperiods) which is not supported by the dummy driver, preventing "Unknown option n" errors with jackdmp 1.9.20.
+
+### Release
+- Hardened release script so passing `--notes-file CHANGELOG.md` automatically extracts only this version's section (same behavior as `--from-changelog`). This avoids full-changelog recaps and keeps assets prominent.
+
+### Packaging
+- Rebuilt `.deb` as 3.4.7.
+
 ## v3.4.5 (2025-10-24)
 ### Fixed
 - Ensured `JackMatrixTab` defines its own pretty helpers in-class: `_pretty_client`, `_pretty_port_name`. This avoids AttributeError during startup.
