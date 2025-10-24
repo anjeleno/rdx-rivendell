@@ -4,6 +4,10 @@
 - JACK connect: treat non-fatal "Cannot lock down ... memory area" messages as noise; verify actual connection state and proceed to avoid false failures.
 - Applying a generated profile is now best-effort: each connect is attempted independently so a single transient warning won’t abort the whole apply. A concise summary is shown if any non-fatal issues occurred.
 
+### UI
+- Jack Graph: Lines (cables) are now more visible, and existing connections reliably render by tolerating any whitespace in `jack_lsp -c` output. This fixes the "only dots, no cables" issue on some systems.
+
+
 ### Packaging
 - Prepared 3.4.13 with the above fixes.
 

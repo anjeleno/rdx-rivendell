@@ -1482,6 +1482,11 @@ class JackGraphTab(QWidget):
         self._load_profiles()
         self._selected_out = None  # full port string (output)
         self._selected_in = None   # full port string (input)
+        # Drag-to-connect state
+        self._drag_line = None
+        self._drag_src_item = None
+        self._drag_hover_item = None
+        self._drag_started = False
         self._setup_ui()
         self.refresh()
 
@@ -1599,9 +1604,10 @@ class JackGraphTab(QWidget):
             row = QHBoxLayout()
             btn_apply = QPushButton("Apply")
             btn_delete = QPushButton("Delete")
+            btn_edit = QPushButton("Edit…")
             btn_save = QPushButton("Save Current As…")
             btn_close = QPushButton("Close")
-            row.addWidget(btn_apply); row.addWidget(btn_delete); row.addWidget(btn_save); row.addStretch(1); row.addWidget(btn_close)
+            row.addWidget(btn_apply); row.addWidget(btn_delete); row.addWidget(btn_edit); row.addWidget(btn_save); row.addStretch(1); row.addWidget(btn_close)
             lay.addLayout(row)
 
             def cur_name():
@@ -1619,6 +1625,11 @@ class JackGraphTab(QWidget):
                 if name:
                     self.delete_profile(name)
                     lst.clear(); lst.addItems(sorted(self.profiles.keys(), key=lambda s: s.lower()))
+            def do_edit():
+                name = cur_name()
+                if name:
+                    self.edit_profile(name)
+                    lst.clear(); lst.addItems(sorted(self.profiles.keys(), key=lambda s: s.lower()))
 
             def do_save():
                 name, ok = QInputDialog.getText(dlg, "Save Profile", "Profile name:")
@@ -1629,10 +1640,80 @@ class JackGraphTab(QWidget):
             btn_apply.clicked.connect(do_apply)
             btn_delete.clicked.connect(do_delete)
             btn_save.clicked.connect(do_save)
+            btn_edit.clicked.connect(do_edit)
             btn_close.clicked.connect(dlg.accept)
             dlg.exec_()
         except Exception:
             pass
+
+    def edit_profile(self, name: str):
+        """Simple editor to add/remove pairs within a profile."""
+        try:
+            if name not in self.profiles:
+                return
+            pairs = [list(p) for p in self.profiles.get(name, [])]
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QComboBox, QMessageBox
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f"Edit Profile: {name}")
+            lay = QVBoxLayout(dlg)
+            table = QTableWidget(0, 2, dlg)
+            table.setHorizontalHeaderLabels(["Source (out)", "Destination (in)"])
+            lay.addWidget(table)
+
+            # Populate port combos
+            outs = []
+            ins = []
+            for c, d in self.ports.items():
+                outs.extend(d.get("out", []))
+                ins.extend(d.get("in", []))
+            outs = sorted(outs, key=lambda s: s.lower())
+            ins = sorted(ins, key=lambda s: s.lower())
+
+            def refresh_table():
+                table.setRowCount(len(pairs))
+                for r, (s, d) in enumerate(pairs):
+                    table.setItem(r, 0, QTableWidgetItem(s))
+                    table.setItem(r, 1, QTableWidgetItem(d))
+            refresh_table()
+
+            # Add controls
+            row = QHBoxLayout()
+            cmb_s = QComboBox(); cmb_s.addItems(outs)
+            cmb_d = QComboBox(); cmb_d.addItems(ins)
+            btn_add = QPushButton("Add Pair")
+            btn_rm = QPushButton("Remove Selected")
+            btn_save = QPushButton("Save")
+            btn_close = QPushButton("Close")
+            row.addWidget(cmb_s); row.addWidget(cmb_d); row.addWidget(btn_add); row.addWidget(btn_rm); row.addStretch(1); row.addWidget(btn_save); row.addWidget(btn_close)
+            lay.addLayout(row)
+
+            def on_add():
+                s = cmb_s.currentText().strip(); d = cmb_d.currentText().strip()
+                if s and d:
+                    pairs.append([s, d])
+                    refresh_table()
+            def on_rm():
+                r = table.currentRow()
+                if 0 <= r < len(pairs):
+                    pairs.pop(r)
+                    refresh_table()
+            def on_save():
+                self.profiles[name] = pairs
+                self._save_profiles()
+                QMessageBox.information(dlg, "Profile Saved", f"Updated '{name}' with {len(pairs)} connection(s).")
+            def on_close():
+                dlg.accept()
+
+            btn_add.clicked.connect(on_add)
+            btn_rm.clicked.connect(on_rm)
+            btn_save.clicked.connect(on_save)
+            btn_close.clicked.connect(on_close)
+            dlg.exec_()
+        except Exception as e:
+            try:
+                QMessageBox.critical(self, "Edit Profile", f"Could not edit profile: {e}")
+            except Exception:
+                pass
 
     def save_current_as_profile(self, name: str = None):
         try:
@@ -1738,12 +1819,15 @@ class JackGraphTab(QWidget):
         for line in txt.splitlines():
             if not line:
                 continue
-            if not line.startswith(" "):
+            # New source line has no leading whitespace (spaces or tabs)
+            if not line[:1].isspace():
                 src = line.strip()
                 continue
-            if src and line.startswith("    "):
+            # Destination lines can have any indentation; accept if there is a current src
+            if src and line[:1].isspace():
                 dst = line.strip()
-                cons.append((src, dst))
+                if dst:
+                    cons.append((src, dst))
         return cons
 
     # ----- Graph build -----
@@ -1824,6 +1908,12 @@ class JackGraphTab(QWidget):
         ell.setPos(pos)
         ell.setZValue(2)
         ell.setFlag(ell.ItemIsSelectable, True)
+        # Attach metadata for drag/drop logic
+        try:
+            ell.setData(0, fullport)   # full port name
+            ell.setData(1, bool(is_output))  # True if output node
+        except Exception:
+            pass
         # label
         lab = QGraphicsTextItem(fullport.split(":",1)[1])
         # Place labels outward to keep center uncluttered
@@ -1832,25 +1922,134 @@ class JackGraphTab(QWidget):
         self.scene.addItem(lab)
         self.scene.addItem(ell)
 
-        def on_click(event):
-            if event.button() == Qt.LeftButton:
-                if is_output:
-                    self._selected_out = fullport
-                else:
-                    self._selected_in = fullport
-                # If both selected, attempt connect
-                if self._selected_out and self._selected_in:
+        # Drag-to-connect + click-to-connect combined handler
+        ell._press_pos = None
+        ell._orig_pen = pen
+
+        def begin_drag(start_item, start_scene_pos):
+            # Start a temporary line from the source output node
+            self._drag_src_item = start_item
+            self._drag_started = True
+            p1 = start_item.scenePos()
+            self._drag_line = QGraphicsLineItem(p1.x()+6, p1.y(), start_scene_pos.x(), start_scene_pos.y())
+            dl_pen = QPen(QColor("#8e44ad")); dl_pen.setStyle(Qt.DashLine); dl_pen.setWidth(2)
+            self._drag_line.setPen(dl_pen)
+            self._drag_line.setZValue(0.5)
+            self.scene.addItem(self._drag_line)
+
+        def update_drag(to_scene_pos):
+            if not self._drag_line or not self._drag_src_item:
+                return
+            p1 = self._drag_src_item.scenePos()
+            self._drag_line.setLine(p1.x()+6, p1.y(), to_scene_pos.x(), to_scene_pos.y())
+            # Hover highlight for valid input targets
+            try:
+                items = self.scene.items(to_scene_pos)
+            except Exception:
+                items = []
+            target = None
+            for it in items:
+                try:
+                    if isinstance(it, QGraphicsEllipseItem) and (it.data(1) is False):
+                        target = it
+                        break
+                except Exception:
+                    continue
+            if target is not self._drag_hover_item:
+                # Clear previous highlight
+                if isinstance(self._drag_hover_item, QGraphicsEllipseItem):
                     try:
-                        self._jack_connect(self._selected_out, self._selected_in)
-                        self.refresh()
-                    except Exception as e:
-                        QMessageBox.critical(self, "JACK Error", f"Connect failed: {e}")
-                    finally:
-                        self._selected_out = None
-                        self._selected_in = None
+                        self._drag_hover_item.setPen(self._drag_hover_item._orig_pen)
+                    except Exception:
+                        pass
+                self._drag_hover_item = target
+                if isinstance(self._drag_hover_item, QGraphicsEllipseItem):
+                    hl = QPen(QColor("#f1c40f")); hl.setWidth(3)
+                    self._drag_hover_item.setPen(hl)
+
+        def end_drag(end_scene_pos):
+            # Finalize drag: connect if dropped over an input node
+            if self._drag_line:
+                try:
+                    self.scene.removeItem(self._drag_line)
+                except Exception:
+                    pass
+                self._drag_line = None
+            target = None
+            try:
+                items = self.scene.items(end_scene_pos)
+            except Exception:
+                items = []
+            for it in items:
+                try:
+                    if isinstance(it, QGraphicsEllipseItem) and (it.data(1) is False):
+                        target = it
+                        break
+                except Exception:
+                    continue
+            # Clear hover highlight
+            if isinstance(self._drag_hover_item, QGraphicsEllipseItem):
+                try:
+                    self._drag_hover_item.setPen(self._drag_hover_item._orig_pen)
+                except Exception:
+                    pass
+            self._drag_hover_item = None
+
+            if self._drag_src_item and target:
+                try:
+                    sp = str(self._drag_src_item.data(0))
+                    dp = str(target.data(0))
+                    self._jack_connect(sp, dp)
+                    self.refresh()
+                except Exception as e:
+                    QMessageBox.critical(self, "JACK Error", f"Connect failed: {e}\n{sp} → {dp}")
+
+            self._drag_src_item = None
+            self._drag_started = False
+
+        def on_press(event):
+            if event.button() == Qt.LeftButton:
+                ell._press_pos = event.scenePos()
             return super(QGraphicsEllipseItem, ell).mousePressEvent(event)
 
-        ell.mousePressEvent = on_click
+        def on_move(event):
+            # Start drag only when moved a bit and source is an output node
+            if bool(ell.data(1)) and ell._press_pos is not None:
+                delta = event.scenePos() - ell._press_pos
+                if not self._drag_started and (abs(delta.x()) > 3 or abs(delta.y()) > 3):
+                    # Suppress click-to-connect selection when drag begins
+                    self._selected_out = None
+                    self._selected_in = None
+                    begin_drag(ell, event.scenePos())
+            if self._drag_started:
+                update_drag(event.scenePos())
+            return super(QGraphicsEllipseItem, ell).mouseMoveEvent(event)
+
+        def on_release(event):
+            # If a drag was in progress, finish it; otherwise fall back to click-to-connect
+            if self._drag_started:
+                end_drag(event.scenePos())
+            else:
+                if event.button() == Qt.LeftButton:
+                    if is_output:
+                        self._selected_out = fullport
+                    else:
+                        self._selected_in = fullport
+                    if self._selected_out and self._selected_in:
+                        try:
+                            self._jack_connect(self._selected_out, self._selected_in)
+                            self.refresh()
+                        except Exception as e:
+                            QMessageBox.critical(self, "JACK Error", f"Connect failed: {e}")
+                        finally:
+                            self._selected_out = None
+                            self._selected_in = None
+            ell._press_pos = None
+            return super(QGraphicsEllipseItem, ell).mouseReleaseEvent(event)
+
+        ell.mousePressEvent = on_press
+        ell.mouseMoveEvent = on_move
+        ell.mouseReleaseEvent = on_release
         return ell
 
     # ---- Zoom helper ----
@@ -1934,8 +2133,8 @@ class JackGraphTab(QWidget):
         d_client = dp_item.toolTip().split(":",1)[0]
         key = f"{s_client}→{d_client}"
         is_prot = key in self.critical_pairs
-        pen = QPen(QColor("#e67e22") if is_prot else QColor("#7f8c8d"))
-        pen.setWidth(2 if is_prot else 1)
+        pen = QPen(QColor("#e67e22") if is_prot else QColor("#34495e"))
+        pen.setWidth(3 if is_prot else 2)
         line.setPen(pen)
         line.setZValue(1)
         line.setToolTip(f"{sp_item.toolTip()} → {dp_item.toolTip()}")
