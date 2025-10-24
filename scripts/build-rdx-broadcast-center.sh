@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.3.4"
+PACKAGE_VERSION="3.3.5"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -58,7 +58,7 @@ chmod +x "$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py"
 # Sanity-check and normalize indentation if needed (prevents stray IndentationError)
 echo "🧪 Sanity-checking Python script syntax..."
 python3 - <<PY
-import sys, re
+import sys, re, ast
 from pathlib import Path
 
 path = Path("$PACKAGE_DIR/usr/local/bin/rdx-broadcast-control-center.py")
@@ -71,6 +71,37 @@ def try_compile(txt):
     except Exception as e:
         print(f"   ⛔ Compile check failed: {e}")
         return False
+
+def scan_class_scope_self(txt):
+    """AST-based: return list of (lineno, source_line) where 'self' is referenced at class scope (not inside methods)."""
+    lines = txt.splitlines()
+    out = []
+    try:
+        tree = ast.parse(txt)
+    except Exception:
+        # If AST can't parse, skip (compile check will handle)
+        return out
+
+    class SelfAtClassScopeVisitor(ast.NodeVisitor):
+        def __init__(self):
+            self.violations = []
+
+        def visit_ClassDef(self, node: ast.ClassDef):
+            # Scan direct class body statements excluding nested FunctionDef/ClassDef bodies
+            for stmt in node.body:
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    continue
+                # Walk stmt to find Name('self')
+                if any(isinstance(n, ast.Name) and n.id == 'self' for n in ast.walk(stmt)):
+                    lineno = getattr(stmt, 'lineno', None)
+                    if lineno is not None and 1 <= lineno <= len(lines):
+                        self.violations.append((lineno, lines[lineno-1]))
+            # Continue into nested classes
+            self.generic_visit(node)
+
+    v = SelfAtClassScopeVisitor()
+    v.visit(tree)
+    return v.violations
 
 def normalize(txt):
     lines = txt.splitlines()
@@ -93,17 +124,10 @@ def normalize(txt):
         stripped = line.lstrip(' ')
         lead = len(line) - len(stripped)
 
-        # Track class begin/end
+        # Track class begin
         m_cls = re.match(r'^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(', line)
         if m_cls:
             cls_stack.append(m_cls.group(1))
-            in_method = False
-            method_indent = None
-            out.append(line)
-            continue
-        if current_class() and line.startswith('class '):
-            # New class begins; close previous implicitly
-            cls_stack = [re.match(r'^class\s+([A-Za-z_][A-Za-z0-9_]*)', line).group(1)]
             in_method = False
             method_indent = None
             out.append(line)
@@ -116,15 +140,13 @@ def normalize(txt):
             out.append(line)
             continue
 
-        # Leaving a method when dedented to class level or empty line after class
+        # Leaving a method when dedented
         if in_method and lead <= (method_indent or 0) and stripped and not stripped.startswith('#') and not stripped.startswith('def '):
             in_method = False
             method_indent = None
 
         if in_method and current_class() in target_classes:
-            # Ensure body lines have at least method_indent + 4 spaces
             desired = (method_indent or 0) + 4
-            # Only adjust for common simple statements to avoid harming blocks
             if stripped and not stripped.startswith(('def ', 'class ')):
                 if lead < desired:
                     line = ' ' * desired + stripped
@@ -132,23 +154,49 @@ def normalize(txt):
         out.append(line)
 
     fixed = '\n'.join(out)
-    # Also specifically ensure status bar calls are indented like a normal body line
-    fixed = re.sub(r'(?m)^(\s{0,4})(self\.statusBar\(\)\.showMessage\(.*\))$', r'        \2', fixed)
+    # Specifically ensure common status bar/title lines are indented like a normal body line
+    fixed = re.sub(r'(?m)^(\s{0,4})(self\.(statusBar\(\)\.showMessage|setWindowTitle)\(.*\))$', r'        \2', fixed)
     return fixed
 
-if try_compile(code):
+# 1) Initial compile check
+ok = try_compile(code)
+
+# 2) Check for class-scope self usage; attempt normalize once if found
+errs = scan_class_scope_self(code)
+if errs:
+    print("   ⛔ Found 'self.' at class scope (outside any method):")
+    for ln, text in errs[:10]:
+        print(f"      line {ln}: {text.strip()}")
+    print("   🔧 Applying indentation normalization (wider scope)...")
+    fixed = normalize(code)
+    path.write_text(fixed, encoding='utf-8')
+    # Re-check
+    ok = try_compile(fixed)
+    errs2 = scan_class_scope_self(fixed)
+    if errs2:
+        print("   ❌ Still found class-scope 'self.' after normalization; aborting build.")
+        for ln, text in errs2[:10]:
+            print(f"      line {ln}: {text.strip()}")
+        sys.exit(1)
+    if not ok:
+        print("   ❌ Invalid after normalization; aborting build.")
+        sys.exit(1)
+    print("   ✅ Fixed and valid")
+    sys.exit(0)
+
+if ok:
+    # Even if compile passes, enforce the class-scope 'self.' check
+    errs = scan_class_scope_self(code)
+    if errs:
+        print("   ❌ Build guard: class-scope 'self.' detected; failing build to prevent runtime NameError.")
+        for ln, text in errs[:10]:
+            print(f"      line {ln}: {text.strip()}")
+        sys.exit(1)
     print("   ✅ Syntax OK")
     sys.exit(0)
 
-print("   🔧 Applying indentation normalization (wider scope)...")
-fixed = normalize(code)
-path.write_text(fixed, encoding='utf-8')
-if try_compile(fixed):
-    print("   ✅ Fixed and valid")
-    sys.exit(0)
-else:
-    print("   ❌ Still invalid after normalization; aborting build.")
-    sys.exit(1)
+print("   ❌ Invalid and no auto-normalization applied; aborting build.")
+sys.exit(1)
 PY
 
 # Copy desktop entries

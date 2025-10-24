@@ -1,5 +1,12 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.3.5 (2025-10-23)
+### Improved
+- Build-time guard: Added an AST-based sanity check in the builder to detect any use of `self` at class scope (outside of methods). The builder will try a safe one-pass normalization for common mis-indents (status bar/title lines) and abort the build if violations remain. This prevents shipping packages that would crash with `NameError` at startup.
+
+### Notes
+- No functional UI changes; this release focuses on packaging resilience and preventing runtime class-scope errors from slipping through.
+
 ## v3.3.4 (2025-10-23)
 ### Fixed
 - Hotfix: Resolved `NameError: name 'self' is not defined` during startup. A mis-indented status bar line ended up at class scope instead of inside `setup_ui()`. The line is now correctly indented so class creation no longer executes instance code.
