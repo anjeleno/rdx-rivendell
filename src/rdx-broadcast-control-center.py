@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.4.10
+RDX Professional Broadcast Control Center v3.4.11
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1519,38 +1519,14 @@ class JackGraphTab(QWidget):
         bar.addWidget(btn_fit)
         root.addLayout(bar)
 
-        # Manual connect controls for full control/override
-        manual = QHBoxLayout()
-        manual.addWidget(QLabel("Output:"))
-        self.manual_out = QComboBox(); self.manual_out.setEditable(True)
-        manual.addWidget(self.manual_out)
-        manual.addWidget(QLabel("Input:"))
-        self.manual_in = QComboBox(); self.manual_in.setEditable(True)
-        manual.addWidget(self.manual_in)
-        btn_mc = QPushButton("Connect")
-        btn_md = QPushButton("Disconnect")
-        btn_lock = QPushButton("Lock/Unlock Pair")
-        btn_mc.clicked.connect(self.connect_manual_ports)
-        btn_md.clicked.connect(self.disconnect_manual_ports)
-        btn_lock.clicked.connect(self.toggle_lock_manual_pair)
-        manual.addWidget(btn_mc)
-        manual.addWidget(btn_md)
-        manual.addWidget(btn_lock)
-        root.addLayout(manual)
-        # Profiles row
+        # Profiles row (no dropdowns on the tab)
         prof = QHBoxLayout()
-        prof.addWidget(QLabel("Profile:"))
-        self.profile_combo = QComboBox(); self.profile_combo.setEditable(False)
-        prof.addWidget(self.profile_combo)
-        btn_apply = QPushButton("Apply")
-        btn_save = QPushButton("Save Current As…")
-        btn_delete = QPushButton("Delete")
-        btn_apply.clicked.connect(self.apply_selected_profile)
-        btn_save.clicked.connect(self.save_current_as_profile)
-        btn_delete.clicked.connect(self.delete_selected_profile)
-        prof.addWidget(btn_apply)
-        prof.addWidget(btn_save)
-        prof.addWidget(btn_delete)
+        btn_profiles = QPushButton("📁 Profiles…")
+        btn_profiles.clicked.connect(self.open_profiles_dialog)
+        btn_generate = QPushButton("✨ Generate Profile")
+        btn_generate.clicked.connect(self.generate_profile)
+        prof.addWidget(btn_profiles)
+        prof.addWidget(btn_generate)
         prof.addStretch(1)
         root.addLayout(prof)
 
@@ -1611,17 +1587,103 @@ class JackGraphTab(QWidget):
         except Exception:
             pass
 
-    def _refresh_profiles_combo(self):
+    # ---- Profiles dialog and helpers ----
+    def open_profiles_dialog(self):
         try:
-            names = sorted(self.profiles.keys(), key=lambda s: s.lower())
-            cur = self.profile_combo.currentText() if hasattr(self, 'profile_combo') else None
-            if hasattr(self, 'profile_combo'):
-                self.profile_combo.clear()
-                self.profile_combo.addItems(names)
-                if cur in names:
-                    self.profile_combo.setCurrentText(cur)
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QListWidget, QHBoxLayout, QPushButton, QInputDialog
+            dlg = QDialog(self)
+            dlg.setWindowTitle("JACK Profiles")
+            lay = QVBoxLayout(dlg)
+            lst = QListWidget(); lst.addItems(sorted(self.profiles.keys(), key=lambda s: s.lower()))
+            lay.addWidget(lst)
+            row = QHBoxLayout()
+            btn_apply = QPushButton("Apply")
+            btn_delete = QPushButton("Delete")
+            btn_save = QPushButton("Save Current As…")
+            btn_close = QPushButton("Close")
+            row.addWidget(btn_apply); row.addWidget(btn_delete); row.addWidget(btn_save); row.addStretch(1); row.addWidget(btn_close)
+            lay.addLayout(row)
+
+            def cur_name():
+                item = lst.currentItem()
+                return item.text() if item else None
+
+            def do_apply():
+                name = cur_name()
+                if name:
+                    self.apply_profile(name)
+                    self.refresh()
+
+            def do_delete():
+                name = cur_name()
+                if name:
+                    self.delete_profile(name)
+                    lst.clear(); lst.addItems(sorted(self.profiles.keys(), key=lambda s: s.lower()))
+
+            def do_save():
+                name, ok = QInputDialog.getText(dlg, "Save Profile", "Profile name:")
+                if ok and name.strip():
+                    self.save_current_as_profile(name.strip())
+                    lst.clear(); lst.addItems(sorted(self.profiles.keys(), key=lambda s: s.lower()))
+
+            btn_apply.clicked.connect(do_apply)
+            btn_delete.clicked.connect(do_delete)
+            btn_save.clicked.connect(do_save)
+            btn_close.clicked.connect(dlg.accept)
+            dlg.exec_()
         except Exception:
             pass
+
+    def save_current_as_profile(self, name: str = None):
+        try:
+            # Refresh connections to ensure current
+            self.connections = self._list_connections()
+            key = name
+            if not key:
+                from PyQt5.QtWidgets import QInputDialog
+                key, ok = QInputDialog.getText(self, "Save Profile", "Profile name:")
+                if not ok or not str(key).strip():
+                    return
+                key = str(key).strip()
+            # Store as list of [src, dst]
+            self.profiles[key] = [[s, d] for (s, d) in self.connections]
+            self._save_profiles()
+            QMessageBox.information(self, "Profile Saved", f"Saved profile '{key}' with {len(self.connections)} connections.")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Profile", f"Could not save profile: {e}")
+
+    def apply_profile(self, name: str):
+        try:
+            if not name or name not in self.profiles:
+                return
+            pairs = self.profiles.get(name, [])
+            applied = 0
+            for s, d in pairs:
+                try:
+                    # Only connect if both ports exist now
+                    if self._port_exists(s) and self._port_exists(d):
+                        self._jack_connect(s, d)
+                        applied += 1
+                except Exception:
+                    pass
+            self.refresh()
+            QMessageBox.information(self, "Profile Applied", f"Applied {applied}/{len(pairs)} connections from '{name}'.")
+        except Exception as e:
+            QMessageBox.critical(self, "Apply Profile", f"Could not apply profile: {e}")
+
+    def delete_profile(self, name: str):
+        try:
+            if not name or name not in self.profiles:
+                return
+            reply = QMessageBox.question(self, "Delete Profile",
+                                         f"Delete profile '{name}'? This cannot be undone.",
+                                         QMessageBox.Yes | QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                return
+            self.profiles.pop(name, None)
+            self._save_profiles()
+        except Exception as e:
+            QMessageBox.critical(self, "Delete Profile", f"Could not delete profile: {e}")
 
     # ----- JACK queries -----
     def _run(self, args: list, timeout: float = 0.8):
@@ -1749,8 +1811,7 @@ class JackGraphTab(QWidget):
             if rect.isValid():
                 self.view.fitInView(rect, Qt.KeepAspectRatio)
             self._fit_pending = False
-        # Update manual connect combos
-        self._populate_manual_combos()
+        # No manual combos on the graph tab
 
     def _add_port_node(self, fullport: str, pos: QPointF, is_output: bool):
         r = 6
@@ -1828,6 +1889,10 @@ class JackGraphTab(QWidget):
             sp = (self.manual_out.currentText() or '').strip()
             dp = (self.manual_in.currentText() or '').strip()
             if sp and dp:
+                if not self._direction_ok(sp, dp):
+                    QMessageBox.warning(self, "Port Direction",
+                                        "The selected source doesn't look like an output or the destination isn't an input.\nProceed anyway?",
+                                        QMessageBox.Ok, QMessageBox.Ok)
                 self._jack_connect(sp, dp)
                 self.refresh()
         except Exception as e:
@@ -1877,10 +1942,21 @@ class JackGraphTab(QWidget):
         line.setFlag(line.ItemIsSelectable, True)
         self.scene.addItem(line)
 
+        # Add a small state icon near the middle of the line
+        midx = (p1.x()+p2.x())/2
+        midy = (p1.y()+p2.y())/2
+        icon = QGraphicsTextItem("🔐" if is_prot else "⚠️")
+        icon.setDefaultTextColor(QColor("#e67e22") if is_prot else QColor("#7f8c8d"))
+        icon.setPos(midx - 6, midy - 10)
+        icon.setZValue(1.5)
+        self.scene.addItem(icon)
+
         def on_line_press(event):
             if event.button() == Qt.RightButton:
                 menu = QMenu()
                 act_disc = menu.addAction("Disconnect")
+                if is_prot:
+                    act_disc.setEnabled(False)
                 act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
                 chosen = menu.exec_(event.screenPos().toPoint())
                 if chosen == act_disc:
@@ -2014,6 +2090,81 @@ class JackGraphTab(QWidget):
         except Exception:
             return False
 
+    def generate_profile(self):
+        try:
+            # Build a suggested chain: VLC→RD(in), RD(out)→ST(in), ST(out)→LS(in), LS(out)→system(playback)
+            def find_like(names, direction, need=2):
+                for c in sorted(self.ports.keys()):
+                    lc = c.lower()
+                    if any(n in lc for n in names):
+                        if len(self.ports.get(c, {}).get(direction, [])) >= need:
+                            return c
+                return None
+            def first2(c, direction):
+                return self._first_two(self.ports.get(c, {}).get(direction, [])) if c else []
+
+            vlc = find_like(["vlc"], "out")
+            rd_in = find_like(["rivendell", "rd"], "in")
+            rd_out = find_like(["rivendell", "rd"], "out")
+            st_in = find_like(["stereo tool", "stereotool", "stereo_tool", "thimeo"], "in")
+            st_out = find_like(["stereo tool", "stereotool", "stereo_tool", "thimeo"], "out")
+            ls_in = find_like(["liquidsoap"], "in")
+            ls_out = find_like(["liquidsoap"], "out")
+            sys_in = find_like(["system"], "in")
+
+            pairs = []
+            def add_pair_ports(src_client, dst_client):
+                if not (src_client and dst_client):
+                    return
+                sps = first2(src_client, "out")
+                dps = first2(dst_client, "in")
+                if len(sps) == 2 and len(dps) == 2:
+                    pairs.append([sps[0], dps[0]])
+                    pairs.append([sps[1], dps[1]])
+
+            # Suggested stereo pairs
+            add_pair_ports(vlc, rd_in)
+            add_pair_ports(rd_out, st_in)
+            add_pair_ports(st_out, ls_in)
+            add_pair_ports(ls_out, sys_in)
+
+            if not pairs:
+                QMessageBox.information(self, "Generate Profile", "No suitable stereo clients found to generate a profile.")
+                return
+
+            # Show summary and ask for name
+            summary = "\n".join([f"{s} → {d}" for s, d in pairs])
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Generated Profile")
+            msg.setText("Proposed connections:\n\n" + summary)
+            msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            ret = msg.exec_()
+            if ret != QMessageBox.Ok:
+                return
+
+            from PyQt5.QtWidgets import QInputDialog
+            default_name = time.strftime("Suggested %Y-%m-%d %H:%M")
+            name, ok = QInputDialog.getText(self, "Save Generated Profile", "Profile name:", text=default_name)
+            if not ok or not name.strip():
+                return
+            key = name.strip()
+            self.profiles[key] = pairs
+            self._save_profiles()
+            # Offer immediate apply
+            try:
+                applied = 0
+                for s, d in pairs:
+                    if self._port_exists(s) and self._port_exists(d):
+                        self._jack_connect(s, d)
+                        applied += 1
+                self.refresh()
+                QMessageBox.information(self, "Profile Generated", f"Saved '{key}' and applied {applied}/{len(pairs)} connections.")
+            except Exception as e:
+                QMessageBox.warning(self, "Apply Generated Profile", f"Saved '{key}' but applying encountered issues: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Generate Profile", f"Could not generate profile: {e}")
+
     def emergency_disconnect(self):
         reply = QMessageBox.warning(self, "EMERGENCY DISCONNECT",
                                     "⚠️ This will disconnect ALL non-critical JACK connections!\n\nContinue?",
@@ -2061,18 +2212,25 @@ class JackGraphTab(QWidget):
         return out[:2]
 
     def _jack_connect(self, src_port: str, dst_port: str):
-        r = self._run(["jack_connect", src_port, dst_port], timeout=1.2)
+        r = self._run(["jack_connect", src_port, dst_port], timeout=1.8)
         if r.returncode != 0:
-            # tolerate already-connected
+            msg = (r.stderr or r.stdout or "jack_connect failed").strip()
+            low = msg.lower()
+            # Tolerate common non-fatal errors
+            if "already connected" in low or "ports are already connected" in low:
+                return
             if self._connected(src_port, dst_port):
                 return
-            raise RuntimeError((r.stderr or r.stdout or "jack_connect failed").strip())
+            # Some systems return a generic "cannot connect client" even when already connected
+            if "cannot connect" in low and self._connected(src_port, dst_port):
+                return
+            raise RuntimeError(msg)
 
     def _jack_disconnect(self, src_port: str, dst_port: str):
         self._run(["jack_disconnect", src_port, dst_port], timeout=1.2)
 
     def _connected(self, sp: str, dp: str) -> bool:
-        res = self._run(["jack_lsp", "-c"], timeout=1.0)
+        res = self._run(["jack_lsp", "-c"], timeout=1.2)
         txt = res.stdout or ""
         cur = None
         for line in txt.splitlines():
@@ -2081,9 +2239,18 @@ class JackGraphTab(QWidget):
             if not line.startswith(" "):
                 cur = line.strip()
                 continue
+            # Accept any kind/amount of whitespace before the destination line
             if cur == sp and line.strip() == dp:
                 return True
         return False
+
+    def _direction_ok(self, sp: str, dp: str) -> bool:
+        try:
+            s_client = sp.split(":",1)[0]
+            d_client = dp.split(":",1)[0]
+            return (sp in self.ports.get(s_client,{}).get("out", [])) and (dp in self.ports.get(d_client,{}).get("in", []))
+        except Exception:
+            return True
 
     # ---- JACK helpers ----
     def refresh_jack_connections(self):
@@ -4703,7 +4870,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.10")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.4.11")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -4771,7 +4938,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.10")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.4.11")
 
     # ---- System tray ----
     def _setup_tray(self):
@@ -4853,7 +5020,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.10")
+    app.setApplicationVersion("3.4.11")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()
