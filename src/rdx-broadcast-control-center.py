@@ -1466,6 +1466,13 @@ class JackGraphTab(QWidget):
         self.view = QGraphicsView(self.scene, self)
         self.view.setRenderHints(self.view.renderHints())
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
+        # Improve zoom behavior
+        try:
+            self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+            self.view.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        except Exception:
+            pass
+        self._zoom_level = 1.0
         self._fit_pending = True  # Fit once by default; user can control zoom after
         self.ports = {}
         self.connections = []
@@ -1496,6 +1503,7 @@ class JackGraphTab(QWidget):
                 rect = self.scene.itemsBoundingRect()
                 if rect.isValid():
                     self.view.fitInView(rect, Qt.KeepAspectRatio)
+                    self._zoom_level = 1.0
             except Exception:
                 pass
             self._fit_pending = False
@@ -1508,6 +1516,25 @@ class JackGraphTab(QWidget):
         bar.addWidget(btn_zoom_in)
         bar.addWidget(btn_fit)
         root.addLayout(bar)
+
+        # Manual connect controls for full control/override
+        manual = QHBoxLayout()
+        manual.addWidget(QLabel("Output:"))
+        self.manual_out = QComboBox(); self.manual_out.setEditable(True)
+        manual.addWidget(self.manual_out)
+        manual.addWidget(QLabel("Input:"))
+        self.manual_in = QComboBox(); self.manual_in.setEditable(True)
+        manual.addWidget(self.manual_in)
+        btn_mc = QPushButton("Connect")
+        btn_md = QPushButton("Disconnect")
+        btn_lock = QPushButton("Lock/Unlock Pair")
+        btn_mc.clicked.connect(self.connect_manual_ports)
+        btn_md.clicked.connect(self.disconnect_manual_ports)
+        btn_lock.clicked.connect(self.toggle_lock_manual_pair)
+        manual.addWidget(btn_mc)
+        manual.addWidget(btn_md)
+        manual.addWidget(btn_lock)
+        root.addLayout(manual)
         root.addWidget(self.view)
 
     # ----- Persistence -----
@@ -1557,18 +1584,10 @@ class JackGraphTab(QWidget):
             line = raw.rstrip()
             if not line:
                 continue
-            if not line.startswith(" ") and ":" in line:
-                cur = line.strip()
-                c = cur.split(":", 1)[0]
-                ports.setdefault(c, {"in": [], "out": []})
-                # guess by name
-                pn = cur.split(":", 1)[1].lower()
-                if "out" in pn and "in" not in pn:
-                    ports[c]["out"].append(cur)
-                elif "in" in pn and "out" not in pn:
-                    ports[c]["in"].append(cur)
-            elif line.strip().startswith("properties:") and cur:
-                props = line.split(":", 1)[1]
+            lstr = line.lstrip()
+            # Treat any amount of whitespace (spaces/tabs) as indentation for property lines
+            if lstr.lower().startswith("properties:") and cur:
+                props = lstr.split(":", 1)[1]
                 c = cur.split(":", 1)[0]
                 try:
                     if cur in ports.get(c, {}).get("in", []):
@@ -1580,6 +1599,18 @@ class JackGraphTab(QWidget):
                 if "output" in props:
                     ports[c]["out"].append(cur)
                 else:
+                    ports[c]["in"].append(cur)
+                continue
+            # New port: not indented and not a properties line
+            if (not line.startswith(" ")) and (not lstr.lower().startswith("properties:")) and (":" in line):
+                cur = line.strip()
+                c = cur.split(":", 1)[0]
+                ports.setdefault(c, {"in": [], "out": []})
+                # guess by name
+                pn = cur.split(":", 1)[1].lower()
+                if "out" in pn and "in" not in pn:
+                    ports[c]["out"].append(cur)
+                elif "in" in pn and "out" not in pn:
                     ports[c]["in"].append(cur)
         return ports
 
@@ -1662,6 +1693,8 @@ class JackGraphTab(QWidget):
             if rect.isValid():
                 self.view.fitInView(rect, Qt.KeepAspectRatio)
             self._fit_pending = False
+        # Update manual connect combos
+        self._populate_manual_combos()
 
     def _add_port_node(self, fullport: str, pos: QPointF, is_output: bool):
         r = 6
@@ -1701,6 +1734,75 @@ class JackGraphTab(QWidget):
 
         ell.mousePressEvent = on_click
         return ell
+
+    # ---- Zoom helper ----
+    def _zoom(self, factor: float):
+        try:
+            new_level = self._zoom_level * float(factor)
+            new_level = max(0.2, min(4.0, new_level))
+            ratio = new_level / (self._zoom_level if self._zoom_level else 1.0)
+            self.view.scale(ratio, ratio)
+            self._zoom_level = new_level
+            self._fit_pending = False
+        except Exception:
+            pass
+
+    # ---- Manual connect helpers ----
+    def _populate_manual_combos(self):
+        try:
+            outs = []
+            ins = []
+            for c, d in self.ports.items():
+                outs.extend(d.get("out", []))
+                ins.extend(d.get("in", []))
+            outs_sorted = sorted(outs, key=lambda s: s.lower())
+            ins_sorted = sorted(ins, key=lambda s: s.lower())
+            if hasattr(self, 'manual_out') and hasattr(self, 'manual_in'):
+                self.manual_out.clear(); self.manual_in.clear()
+                for p in outs_sorted:
+                    self.manual_out.addItem(p)
+                for p in ins_sorted:
+                    self.manual_in.addItem(p)
+        except Exception:
+            pass
+
+    def connect_manual_ports(self):
+        try:
+            sp = (self.manual_out.currentText() or '').strip()
+            dp = (self.manual_in.currentText() or '').strip()
+            if sp and dp:
+                self._jack_connect(sp, dp)
+                self.refresh()
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", f"Connect failed: {e}")
+
+    def disconnect_manual_ports(self):
+        try:
+            sp = (self.manual_out.currentText() or '').strip()
+            dp = (self.manual_in.currentText() or '').strip()
+            if sp and dp:
+                self._jack_disconnect(sp, dp)
+                self.refresh()
+        except Exception as e:
+            QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
+
+    def toggle_lock_manual_pair(self):
+        try:
+            sp = (self.manual_out.currentText() or '').strip()
+            dp = (self.manual_in.currentText() or '').strip()
+            if not (sp and dp):
+                return
+            s_client = sp.split(":",1)[0]
+            d_client = dp.split(":",1)[0]
+            key = f"{s_client}→{d_client}"
+            if key in self.critical_pairs:
+                self.critical_pairs.remove(key)
+            else:
+                self.critical_pairs.add(key)
+            self._save_protected_pairs()
+            self.refresh()
+        except Exception:
+            pass
 
     def _add_edge(self, sp_item: QGraphicsEllipseItem, dp_item: QGraphicsEllipseItem):
         p1 = sp_item.scenePos()
@@ -1756,6 +1858,8 @@ class JackGraphTab(QWidget):
                         return c
             return None
         rd = find_like(["rivendell", "rd"], "out") or find_like(["system"], "out")
+        rd_in = find_like(["rivendell", "rd"], "in")
+        vlc = find_like(["vlc"], "out")
         st = find_like(["stereo tool", "stereotool", "stereo_tool", "thimeo"], "in")
         ls_in = find_like(["liquidsoap"], "in")
         ls_out = find_like(["liquidsoap"], "out")
@@ -1774,6 +1878,17 @@ class JackGraphTab(QWidget):
                         actions.append(pair(a,b))
                     except Exception:
                         pass
+        # Prefer bringing external audio into Rivendell if available
+        if vlc and rd_in:
+            s_ports = self._first_two(self.ports.get(vlc,{}).get("out",[]))
+            d_ports = self._first_two(self.ports.get(rd_in,{}).get("in",[]))
+            if len(s_ports)==2 and len(d_ports)==2:
+                try:
+                    self._jack_connect(s_ports[0], d_ports[0])
+                    self._jack_connect(s_ports[1], d_ports[1])
+                    actions.append(pair(vlc, rd_in))
+                except Exception:
+                    pass
         if not actions:
             QMessageBox.information(self, "Auto-Connect", "No suitable clients found for auto patching.")
         self.refresh()
