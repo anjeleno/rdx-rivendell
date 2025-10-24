@@ -1,5 +1,19 @@
 # RDX Broadcast Control Center Changelog
 
+## v3.4.9 (2025-10-24)
+### Fixed
+- Jack Graph: Zoom In/Out now work with smooth scaling and preserved zoom after refresh.
+- JACK port parsing: Eliminated ghost "Properties" ports; Rivendell inputs and physical/USB I/O show correctly.
+
+### Added
+- Manual Connect/Disconnect UI on the Jack Graph tab with editable Output/Input selectors and Lock/Unlock for protected pairs.
+
+### Improved
+- Auto-Connect enhanced to route VLC outputs to Rivendell inputs when available, alongside RD → Stereo Tool → Liquidsoap chain.
+
+### Packaging
+- Bumped to 3.4.9 and rebuilt `.deb`.
+
 ## v3.4.8 (2025-10-24)
 ### Changed
 - Version bump to publish jackd dummy backend fix and hardened release notes flow.
