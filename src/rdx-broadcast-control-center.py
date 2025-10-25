@@ -948,8 +948,10 @@ echo "SUCCESS: Icecast configuration deployed and service restarted"
 class JackMatrixTab(QWidget):
     """Tab 3: JACK Patchboard - Simple stereo-aware patching with protection"""
 
-    def __init__(self):
+    def __init__(self, main=None):
         super().__init__()
+        # Optional reference to main window for settings access
+        self.main = main
         # Parsed JACK ports by client: {client: {"in": [fullport,...], "out": [...]}}
         self.ports = {}
         # Known clients (sorted)
@@ -1090,6 +1092,16 @@ class JackMatrixTab(QWidget):
 
         # Initialize
         self.refresh_jack_connections()
+
+        # Auto-reconnect watcher for VLC → Rivendell Record-In
+        try:
+            self._vlc_reconnect_last = 0.0
+            self._vlc_watch_timer = QTimer(self)
+            self._vlc_watch_timer.setInterval(1500)  # 1.5s cadence
+            self._vlc_watch_timer.timeout.connect(self._vlc_autoreconnect_tick)
+            self._vlc_watch_timer.start()
+        except Exception:
+            pass
 
     # ---- JACK helpers (Matrix) ----
     def refresh_jack_connections(self):
@@ -1405,6 +1417,70 @@ class JackMatrixTab(QWidget):
         except Exception:
             pass
         return False
+
+    def _setting_enabled(self, key: str, default: bool = True) -> bool:
+        try:
+            if self.main and hasattr(self.main, "_settings"):
+                return bool(self.main._settings.get(key, default))
+        except Exception:
+            pass
+        return default
+
+    def _vlc_autoreconnect_tick(self):
+        """Periodically ensure VLC outputs feed Rivendell Record-In when present.
+        - Only runs when enabled in Settings.
+        - Will not override existing connections on Rivendell Record-In ports.
+        - Best-effort: ignores transient jack_connect noise and retries on next tick.
+        """
+        try:
+            if not self._setting_enabled('auto_reconnect_vlc', True):
+                return
+            # Is JACK up?
+            base = self._run(["jack_lsp"], timeout=0.6)
+            if base.returncode != 0:
+                return
+            # Snapshot current ports and connections (lightweight)
+            res = self._run(["jack_lsp", "-p"], timeout=0.9)
+            out = res.stdout or base.stdout
+            ports = self._parse_ports(out)
+            cons = self._list_connections()
+
+            def find_like(names, direction, need=2):
+                for c in sorted(ports.keys()):
+                    lc = c.lower()
+                    if any(n in lc for n in names):
+                        if len(ports.get(c, {}).get(direction, [])) >= need:
+                            return c
+                return None
+
+            vlc = find_like(["vlc"], "out")
+            rd_in = find_like(["rivendell", "rd"], "in")
+            if not (vlc and rd_in):
+                return
+
+            s_ports = self._first_two(ports.get(vlc, {}).get("out", []))
+            d_ports = self._first_two(ports.get(rd_in, {}).get("in", []))
+            if len(s_ports) != 2 or len(d_ports) != 2:
+                return
+
+            # If RD Record-In ports already have any source connected, skip to avoid overriding
+            dp0_has = any(dst == d_ports[0] for (_, dst) in cons)
+            dp1_has = any(dst == d_ports[1] for (_, dst) in cons)
+            if dp0_has and dp1_has:
+                return
+
+            # Connect missing pairs best-effort
+            try:
+                if not dp0_has:
+                    self._jack_connect(s_ports[0], d_ports[0])
+                if not dp1_has:
+                    self._jack_connect(s_ports[1], d_ports[1])
+            except Exception:
+                # Ignore; will retry on next tick
+                pass
+        except Exception:
+            # Never let the watcher crash the UI
+            pass
 
     # ---- Manual per-port connect/disconnect ----
     def connect_manual_ports(self):
@@ -5066,6 +5142,22 @@ class SettingsTab(QWidget):
         hl.addWidget(btn_hide_now)
         layout.addWidget(tray_group)
 
+        # JACK Auto-Reconnect settings
+        reconnect_group = QGroupBox("🔄 JACK Auto-Reconnect")
+        rl = QHBoxLayout(reconnect_group)
+        self.chk_vlc_reconnect = QCheckBox("Auto-reconnect VLC → Rivendell Record-In")
+        # Default to enabled when missing
+        try:
+            default_enabled = bool(self.main._settings.get('auto_reconnect_vlc', True))
+        except Exception:
+            default_enabled = True
+        self.chk_vlc_reconnect.setChecked(default_enabled)
+        self.chk_vlc_reconnect.setToolTip("When VLC or Rivendell ports appear or restart, automatically connect VLC outputs to Rivendell Record-In if those inputs have no existing source.")
+        self.chk_vlc_reconnect.stateChanged.connect(self.on_vlc_reconnect_toggle)
+        rl.addWidget(self.chk_vlc_reconnect)
+        rl.addStretch(1)
+        layout.addWidget(reconnect_group)
+
         layout.addStretch(1)
 
     # ---- Autostart helpers ----
@@ -5153,6 +5245,13 @@ WantedBy=default.target
         except Exception:
             pass
 
+    def on_vlc_reconnect_toggle(self, _state):
+        try:
+            self.main._settings['auto_reconnect_vlc'] = bool(self.chk_vlc_reconnect.isChecked())
+            self.main.save_settings()
+        except Exception:
+            pass
+
 
 class RDXBroadcastControlCenter(QMainWindow):
     """Main application window with tabbed interface"""
@@ -5202,7 +5301,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         self.tab_widget.addTab(self.icecast_management, "📡 Icecast Management")
         
         # Add remaining tabs
-        self.jack_matrix = JackMatrixTab()
+        self.jack_matrix = JackMatrixTab(self)
         self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
 
         # Visual Graph (preview)

@@ -1,3 +1,19 @@
+## v3.5.0 (2025-10-24)
+### Added
+- JACK Auto-Reconnect watcher: automatically reconnects VLC outputs to Rivendell Record-In when inputs are free. Best-effort and non-destructive; retries periodically and never overrides existing sources.
+- Settings toggle: new “JACK Auto-Reconnect → VLC to Rivendell Record-In” option in Settings; persisted to `~/.config/rdx/settings.json` and enabled by default.
+- Unified release helper: `scripts/release-rdx.sh` now supports a `bump` alias (patch/minor/major), dry-run by default, preflight compile + auto-fix, and CHANGELOG integration.
+
+### Changed
+- Builder and release flow hardened: safer dry-run behavior, clearer failure messages, and asset checks deferred in dry-run.
+- Version updates are applied consistently to the app window title and the Debian builder script.
+
+### Fixed
+- Minor indentation and wiring issues around JACK tabs resolved; timer-based watcher isolated from UI exceptions.
+
+### Packaging
+- Bumped package to 3.5.0 and rebuilt `.deb`.
+
 ## v3.4.14 (2025-10-24)
 ### UI
 - Jack Graph: Added drag-to-connect cables with live preview; connect on drop from outputs to inputs and cancel on outside drop.

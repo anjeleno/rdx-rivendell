@@ -44,10 +44,16 @@ AUTO_FIX=true
 # Subcommand alias: "bump [patch|minor|major]"
 if [[ ${1:-} == "bump" ]]; then
   shift || true
-  case "${1:-patch}" in
-    patch|minor|major) BUMP="$1"; shift || true;;
-    *) BUMP="patch";;
-  esac
+  # Safely read optional argument without tripping set -u
+  next=${1:-}
+  if [[ -z "$next" ]]; then
+    BUMP="patch"
+  else
+    case "$next" in
+      patch|minor|major) BUMP="$next"; shift || true;;
+      *) BUMP="patch";;
+    esac
+  fi
   # Map to normal protocol defaults
   FROM_CHANGELOG=true
   PREPARE_CHANGELOG=true
@@ -205,8 +211,12 @@ fi
 # Verify CHANGELOG section if using --from-changelog
 if $FROM_CHANGELOG; then
   if ! grep -qE "^## v${VERSION} \(" "$CHANGELOG"; then
-    echo "CHANGELOG.md has no section for v$VERSION. Add it (use --prepare-changelog) or omit --from-changelog." >&2
-    exit 1
+    if $DRY_RUN; then
+      say "[dry-run] CHANGELOG missing v${VERSION}; would fail unless --prepare-changelog (already planned). Proceeding in dry-run."
+    else
+      echo "CHANGELOG.md has no section for v$VERSION. Add it (use --prepare-changelog) or omit --from-changelog." >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -235,12 +245,20 @@ else
   fi
 fi
 
-run bash "$BUILD_SCRIPT"
+if $DRY_RUN; then
+  say "[dry-run] Would run $BUILD_SCRIPT to build the .deb"
+else
+  run bash "$BUILD_SCRIPT"
+fi
 
 ASSET="releases/rdx-broadcast-control-center_${VERSION}_amd64.deb"
-if [[ ! -f "$ASSET" ]]; then
-  echo "Expected asset not found at $ASSET" >&2
-  exit 1
+if $DRY_RUN; then
+  say "[dry-run] Would expect asset at $ASSET after build"
+else
+  if [[ ! -f "$ASSET" ]]; then
+    echo "Expected asset not found at $ASSET" >&2
+    exit 1
+  fi
 fi
 
 say "Staging and committing release changes"
@@ -266,15 +284,19 @@ if $DO_PUSH; then
 fi
 
 if $DO_PUBLISH; then
-  if ! command -v gh >/dev/null 2>&1; then
-    echo "gh CLI not found; cannot publish release. Install gh or pass --no-publish." >&2
-    exit 1
-  fi
-  say "Publishing GitHub Release ${TAG}"
-  if $FROM_CHANGELOG; then
-    run bash scripts/publish-rdx-release.sh "$TAG" --from-changelog
+  if $DRY_RUN; then
+    say "[dry-run] Would publish GitHub Release ${TAG} with asset ${ASSET}"
   else
-    run bash scripts/publish-rdx-release.sh "$TAG"
+    if ! command -v gh >/dev/null 2>&1; then
+      echo "gh CLI not found; cannot publish release. Install gh or pass --no-publish." >&2
+      exit 1
+    fi
+    say "Publishing GitHub Release ${TAG}"
+    if $FROM_CHANGELOG; then
+      run bash scripts/publish-rdx-release.sh "$TAG" --from-changelog
+    else
+      run bash scripts/publish-rdx-release.sh "$TAG"
+    fi
   fi
 fi
 
