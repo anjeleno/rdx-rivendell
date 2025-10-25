@@ -271,7 +271,12 @@ if $FROM_CHANGELOG && [[ -f "$CHANGELOG" ]]; then
   echo -e "\n" >> "$COMMIT_MSG_FILE"
   python3 scripts/extract-changelog-section.py "$TAG" "$CHANGELOG" >> "$COMMIT_MSG_FILE" || true
 fi
-run git commit -F "$COMMIT_MSG_FILE"
+# Only commit if there are staged changes; otherwise continue without failing
+if git diff --cached --quiet; then
+  say "Nothing to commit; continuing to tag/push."
+else
+  run git commit -F "$COMMIT_MSG_FILE"
+fi
 rm -f "$COMMIT_MSG_FILE"
 
 say "Tagging ${TAG}"
