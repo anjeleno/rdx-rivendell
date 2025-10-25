@@ -1,3 +1,20 @@
+## v3.6.0 (2025-10-25)
+### UI
+- Jack Graph: Robust scene-level right-click menus for both cables and port dots; larger invisible hit areas ensure clicks register even in VM/xRDP sessions.
+- Fallback control: New "⋯ Actions…" button appears when a cable is selected, opening the same menu in environments where RMB is unreliable.
+- Manual patching: Added Output/Input selectors with Connect and Disconnect buttons directly on the Graph tab for deterministic wiring without drag.
+- Safety toggle: "Ignore Protected Locks" checkbox temporarily bypasses protected-pair enforcement (does not modify the persisted protection file). Visuals and Emergency Disconnect respect this state.
+
+### Reliability
+- Edge metadata tagging (endpoints on hit area and visible line) and centralized scene-level context handling remove event-delivery pitfalls and eliminate rubber-band selection in place of menus.
+- Emergency Disconnect respects the Ignore Protected Locks toggle: with the toggle on, all cables can be dropped; with it off, protected pairs remain safe.
+
+### Fixed
+- Right-click context menus now appear reliably on cables and port dots across Ubuntu 22.04, VirtualBox guests, and xRDP sessions.
+
+### Packaging
+- Prepare 3.6.0 with the Graph UX and reliability improvements.
+
 ## v3.5.2 (2025-10-24)
 ### UI
 - Jack Graph: Right‑click reliably opens context menu on cables (no more rubber‑band box). Added a larger invisible hit area to make clicks easy.

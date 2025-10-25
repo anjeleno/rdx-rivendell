@@ -22,8 +22,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QSizePolicy, QSystemTrayIcon, QMenu,
                             QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
                             QGraphicsLineItem, QGraphicsTextItem, QGraphicsPathItem)
-from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF
-from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainterPath
+from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF, QPoint
+from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainterPath, QCursor
 import urllib.request
 import shutil
 import shlex
@@ -1522,6 +1522,59 @@ class JackMatrixTab(QWidget):
             return "Right Out"
         return pn
 
+class GraphScene(QGraphicsScene):
+    """Scene with robust scene-level context menu dispatch for the JACK graph."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._graph = None  # type: JackGraphTab
+
+    def setGraph(self, graph):
+        self._graph = graph
+
+    def contextMenuEvent(self, event):
+        try:
+            if not self._graph:
+                return super().contextMenuEvent(event)
+            pos = event.scenePos()
+            items = self.items(pos)
+            # Prefer edge hit-area/line first, then port dots
+            edge_item = None
+            port_item = None
+            for it in items:
+                # Edge: QGraphicsPathItem with stored endpoints
+                try:
+                    if isinstance(it, QGraphicsPathItem) and it.data(10) and it.data(11):
+                        edge_item = it
+                        break
+                except Exception:
+                    pass
+            if not edge_item:
+                for it in items:
+                    try:
+                        if isinstance(it, QGraphicsEllipseItem) and it.data(0):
+                            port_item = it
+                            break
+                    except Exception:
+                        pass
+            if edge_item:
+                sp = str(edge_item.data(10))
+                dp = str(edge_item.data(11))
+                self._graph._show_edge_menu(sp, dp, event.screenPos())
+                event.accept()
+                return
+            if port_item:
+                fp = str(port_item.data(0))
+                self._graph._show_port_menu(fp, event.screenPos())
+                event.accept()
+                return
+            return super().contextMenuEvent(event)
+        except Exception:
+            try:
+                return super().contextMenuEvent(event)
+            except Exception:
+                return
+
+
 class JackGraphTab(QWidget):
     """Visual JACK graph: clients/ports as nodes with connectable edges and lock/unlock.
     Preview version designed to complement the Patchboard.
@@ -1530,7 +1583,7 @@ class JackGraphTab(QWidget):
     def __init__(self, main=None):
         super().__init__()
         self.main = main
-        self.scene = QGraphicsScene(self)
+    self.scene = GraphScene(self)
         self.view = QGraphicsView(self.scene, self)
         try:
             self.view.setRenderHints(self.view.renderHints() | QPainter.Antialiasing | QPainter.TextAntialiasing | QPainter.SmoothPixmapTransform)
@@ -1554,6 +1607,13 @@ class JackGraphTab(QWidget):
         self._load_profiles()
         self._selected_out = None  # full port string (output)
         self._selected_in = None   # full port string (input)
+        self._ignore_protection = False
+        self._sel_edge = None  # (sp, dp) for Actions… button
+        try:
+            self.scene.setGraph(self)
+            self.scene.selectionChanged.connect(self._on_selection_changed)
+        except Exception:
+            pass
         # Drag-to-connect state
         self._drag_line = None
         self._drag_src_item = None
@@ -1593,6 +1653,13 @@ class JackGraphTab(QWidget):
         btn_auto.clicked.connect(self.auto_connect)
         btn_emerg = QPushButton("🚨 Disconnect Non-Critical")
         btn_emerg.clicked.connect(self.emergency_disconnect)
+        # Ignore protection toggle
+        self.chk_ignore_prot = QCheckBox("Ignore Protected Locks")
+        def _on_ignore(_s):
+            self._ignore_protection = bool(self.chk_ignore_prot.isChecked())
+            # Redraw to reflect styling/menus
+            self.refresh()
+        self.chk_ignore_prot.stateChanged.connect(_on_ignore)
         btn_zoom_out = QPushButton("➖ Zoom Out")
         btn_zoom_out.clicked.connect(lambda: self._zoom(0.9))
         btn_zoom_in = QPushButton("➕ Zoom In")
@@ -1621,11 +1688,27 @@ class JackGraphTab(QWidget):
         bar.addWidget(btn_refresh)
         bar.addWidget(btn_auto)
         bar.addWidget(btn_emerg)
+        bar.addWidget(self.chk_ignore_prot)
         bar.addStretch(1)
         bar.addWidget(self.chk_vlc_reconnect)
         bar.addWidget(btn_zoom_out)
         bar.addWidget(btn_zoom_in)
         bar.addWidget(btn_fit)
+        # Fallback Actions button for selected edge
+        self.btn_actions = QPushButton("⋯ Actions…")
+        self.btn_actions.setEnabled(False)
+        self.btn_actions.setVisible(False)
+        def _do_actions():
+            if self._sel_edge:
+                sp, dp = self._sel_edge
+                # Try to show near the center of the view
+                try:
+                    center = self.view.mapToGlobal(self.view.viewport().rect().center())
+                except Exception:
+                    center = None
+                self._show_edge_menu(sp, dp, center)
+        self.btn_actions.clicked.connect(_do_actions)
+        bar.addWidget(self.btn_actions)
         root.addLayout(bar)
 
         # Profiles row (no dropdowns on the tab)
@@ -1638,6 +1721,31 @@ class JackGraphTab(QWidget):
         prof.addWidget(btn_generate)
         prof.addStretch(1)
         root.addLayout(prof)
+
+        # Manual per-port connect UI (guaranteed fallback)
+        man = QHBoxLayout()
+        try:
+            from PyQt5.QtWidgets import QLabel
+            man.addWidget(QLabel("Output:"))
+        except Exception:
+            pass
+        self.manual_out = QComboBox()
+        man.addWidget(self.manual_out)
+        try:
+            from PyQt5.QtWidgets import QLabel
+            man.addWidget(QLabel("Input:"))
+        except Exception:
+            pass
+        self.manual_in = QComboBox()
+        man.addWidget(self.manual_in)
+        btn_m_connect = QPushButton("Connect")
+        btn_m_connect.clicked.connect(self.connect_manual_ports)
+        btn_m_disconnect = QPushButton("Disconnect")
+        btn_m_disconnect.clicked.connect(self.disconnect_manual_ports)
+        man.addWidget(btn_m_connect)
+        man.addWidget(btn_m_disconnect)
+        man.addStretch(1)
+        root.addLayout(man)
 
         root.addWidget(self.view)
     # ----- Persistence -----
@@ -2000,7 +2108,29 @@ class JackGraphTab(QWidget):
             if rect.isValid():
                 self.view.fitInView(rect, Qt.KeepAspectRatio)
             self._fit_pending = False
-        # No manual combos on the graph tab
+        # Populate manual combos
+        self._populate_manual_combos()
+
+    def _on_selection_changed(self):
+        try:
+            items = self.scene.selectedItems()
+        except Exception:
+            items = []
+        sel_edge = None
+        for it in items:
+            try:
+                if isinstance(it, QGraphicsPathItem) and it.data(10) and it.data(11):
+                    sel_edge = (str(it.data(10)), str(it.data(11)))
+                    break
+            except Exception:
+                continue
+        self._sel_edge = sel_edge
+        has_edge = sel_edge is not None
+        try:
+            self.btn_actions.setVisible(has_edge)
+            self.btn_actions.setEnabled(has_edge)
+        except Exception:
+            pass
 
     def _add_port_node(self, fullport: str, pos: QPointF, is_output: bool):
         r = 6
@@ -2276,10 +2406,10 @@ class JackGraphTab(QWidget):
         c2 = QPointF(p2.x() - dx, p2.y())
         path.cubicTo(c1, c2, QPointF(p2.x()-6, p2.y()))
         line = QGraphicsPathItem(path)
-        s_client = sp_item.toolTip().split(":",1)[0]
-        d_client = dp_item.toolTip().split(":",1)[0]
-        key = f"{s_client}→{d_client}"
-        is_prot = key in self.critical_pairs
+    s_client = sp_item.toolTip().split(":",1)[0]
+    d_client = dp_item.toolTip().split(":",1)[0]
+    key = f"{s_client}→{d_client}"
+    is_prot = (key in self.critical_pairs) and (not getattr(self, "_ignore_protection", False))
         pen = QPen(QColor("#e67e22") if is_prot else QColor("#34495e"))
         pen.setWidth(4 if is_prot else 3)
         try:
@@ -2293,6 +2423,12 @@ class JackGraphTab(QWidget):
         line.setFlag(line.ItemIsSelectable, True)
         try:
             line.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        except Exception:
+            pass
+        # Mark endpoints on the edge for scene-level hit testing/menus
+        try:
+            line.setData(10, sp_item.toolTip())
+            line.setData(11, dp_item.toolTip())
         except Exception:
             pass
         self.scene.addItem(line)
@@ -2317,30 +2453,78 @@ class JackGraphTab(QWidget):
         hit.setZValue(1.6)
         try:
             hit.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+            hit.setFlag(hit.ItemIsSelectable, True)
+        except Exception:
+            pass
+        try:
+            hit.setData(10, sp_item.toolTip())
+            hit.setData(11, dp_item.toolTip())
         except Exception:
             pass
         self.scene.addItem(hit)
 
         def on_line_press(event):
             if event.button() == Qt.RightButton:
-                menu = QMenu()
-                act_disc = menu.addAction("Disconnect")
-                if is_prot:
-                    act_disc.setEnabled(False)
-                act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
-                menu.addSeparator()
-                # Stereo/Mono actions for the two endpoint clients
-                act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
-                act_mono_l = menu.addAction("Mono Left → both inputs")
-                act_mono_r = menu.addAction("Mono Right → both inputs")
-                chosen = menu.exec_(event.screenPos().toPoint())
-                if chosen == act_disc:
-                    try:
-                        self._jack_disconnect(sp_item.toolTip(), dp_item.toolTip())
-                        self.refresh()
-                    except Exception as e:
-                        QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
-                elif chosen == act_lock:
+                # Delegate to shared edge menu to keep logic consistent
+                self._show_edge_menu(sp_item.toolTip(), dp_item.toolTip(), event.screenPos())
+                return
+            return super(QGraphicsPathItem, line).mousePressEvent(event)
+
+    line.mousePressEvent = on_line_press
+    hit.mousePressEvent = on_line_press
+
+    def _show_port_menu(self, fullport: str, screen_pos):
+        try:
+            menu = QMenu()
+            act_disc_all = menu.addAction("Disconnect all on this port")
+            act_copy = menu.addAction("Copy port name")
+            chosen = menu.exec_(QPoint(int(screen_pos.x()), int(screen_pos.y())) if screen_pos else QCursor.pos())
+            if chosen == act_disc_all:
+                try:
+                    cons = self._list_connections()
+                    for s, d in cons:
+                        if s == fullport or d == fullport:
+                            try:
+                                self._jack_disconnect(s, d)
+                            except Exception:
+                                pass
+                    self.refresh()
+                except Exception:
+                    pass
+            elif chosen == act_copy:
+                try:
+                    QApplication.clipboard().setText(fullport)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _show_edge_menu(self, sp_full: str, dp_full: str, screen_pos):
+        try:
+            s_client = sp_full.split(":",1)[0]
+            d_client = dp_full.split(":",1)[0]
+            key = f"{s_client}→{d_client}"
+            is_prot = (key in self.critical_pairs) and (not getattr(self, "_ignore_protection", False))
+            menu = QMenu()
+            act_disc = menu.addAction("Disconnect")
+            if is_prot:
+                act_disc.setEnabled(False)
+            act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
+            if getattr(self, "_ignore_protection", False):
+                act_lock.setEnabled(False)
+            menu.addSeparator()
+            act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
+            act_mono_l = menu.addAction("Mono Left → both inputs")
+            act_mono_r = menu.addAction("Mono Right → both inputs")
+            chosen = menu.exec_(QPoint(int(screen_pos.x()), int(screen_pos.y())) if screen_pos else QCursor.pos())
+            if chosen == act_disc:
+                try:
+                    self._jack_disconnect(sp_full, dp_full)
+                    self.refresh()
+                except Exception as e:
+                    QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
+            elif chosen == act_lock:
+                if not getattr(self, "_ignore_protection", False):
                     if is_prot:
                         if key in self.critical_pairs:
                             self.critical_pairs.remove(key)
@@ -2349,43 +2533,38 @@ class JackGraphTab(QWidget):
                         self.critical_pairs.add(key)
                         self._save_protected_pairs()
                     self.refresh()
-                elif chosen in (act_stereo, act_mono_l, act_mono_r):
-                    try:
-                        s_client = sp_item.toolTip().split(":",1)[0]
-                        d_client = dp_item.toolTip().split(":",1)[0]
-                        s_ports = self._first_two(self.ports.get(s_client,{}).get("out",[]))
-                        d_ports = self._first_two(self.ports.get(d_client,{}).get("in",[]))
-                        if len(d_ports) < 2:
-                            return
-                        if chosen == act_stereo:
-                            if len(s_ports) >= 2:
-                                try:
-                                    self._jack_connect(s_ports[0], d_ports[0])
-                                    self._jack_connect(s_ports[1], d_ports[1])
-                                except Exception:
-                                    pass
-                        elif chosen == act_mono_l:
-                            src = s_ports[0] if s_ports else sp_item.toolTip()
+            elif chosen in (act_stereo, act_mono_l, act_mono_r):
+                try:
+                    s_ports = self._first_two(self.ports.get(s_client, {}).get("out", []))
+                    d_ports = self._first_two(self.ports.get(d_client, {}).get("in", []))
+                    if len(d_ports) < 2:
+                        return
+                    if chosen == act_stereo:
+                        if len(s_ports) >= 2:
                             try:
-                                self._jack_connect(src, d_ports[0])
-                                self._jack_connect(src, d_ports[1])
+                                self._jack_connect(s_ports[0], d_ports[0])
+                                self._jack_connect(s_ports[1], d_ports[1])
                             except Exception:
                                 pass
-                        elif chosen == act_mono_r:
-                            src = (s_ports[1] if len(s_ports) > 1 else sp_item.toolTip())
-                            try:
-                                self._jack_connect(src, d_ports[0])
-                                self._jack_connect(src, d_ports[1])
-                            except Exception:
-                                pass
-                        self.refresh()
-                    except Exception:
-                        pass
-                return
-            return super(QGraphicsPathItem, line).mousePressEvent(event)
-
-    line.mousePressEvent = on_line_press
-    hit.mousePressEvent = on_line_press
+                    elif chosen == act_mono_l:
+                        src = s_ports[0] if s_ports else sp_full
+                        try:
+                            self._jack_connect(src, d_ports[0])
+                            self._jack_connect(src, d_ports[1])
+                        except Exception:
+                            pass
+                    elif chosen == act_mono_r:
+                        src = (s_ports[1] if len(s_ports) > 1 else sp_full)
+                        try:
+                            self._jack_connect(src, d_ports[0])
+                            self._jack_connect(src, d_ports[1])
+                        except Exception:
+                            pass
+                    self.refresh()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # ---- Settings and watcher ----
     def _setting_enabled(self, key: str, default: bool = True) -> bool:
@@ -2674,7 +2853,7 @@ class JackGraphTab(QWidget):
                     s_client = cur_src.split(":", 1)[0]
                     d_client = dst.split(":", 1)[0]
                     key = f"{s_client}→{d_client}"
-                    if key not in self.critical_pairs:
+                    if getattr(self, "_ignore_protection", False) or (key not in self.critical_pairs):
                         try:
                             self._jack_disconnect(cur_src, dst)
                         except Exception:

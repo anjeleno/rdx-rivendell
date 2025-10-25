@@ -6,6 +6,7 @@ NOTES.md
 notes.md
 notes/
 docs/HISTORY-2025-1023.md
+docs/HISTORY-2025-1024.md
 
 # Rivendell v4 source (reference only - too large for repo)
 rivendell-v4/
@@ -84,6 +85,9 @@ test_*
 
 # Logs
 *.log
+
+# Python bytecode caches
+__pycache__/
 
 # Local configuration
 .env
