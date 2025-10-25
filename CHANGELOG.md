@@ -1,3 +1,15 @@
+## v3.5.5 (2025-10-24)
+### UI
+- Jack Graph: Cables now use dedicated graphics items with larger hit zones, so right-click menus (Stereo/Mono/L/R actions) appear reliably on every platform.
+- Layout polish: Initial row spacing widened for clearer separation between client headers and their ports.
+
+### Service Control
+- Launch Order & Timing table returned to the Service Control tab with Move Up/Down, Save, and Start In Order actions wired directly to persisted settings.
+- Ordered start now runs sequential timers per service, honoring saved delays without leaving the Settings tab.
+
+### Packaging
+- Prepare 3.5.5 with the Jack Graph reliability fixes and the refreshed Service Control launch workflow.
+
 ## v3.5.4 (2025-10-24)
 ### Fixed
 - Jack Graph: Resolved an `IndentationError` in `_add_edge` and corrected handler bindings scope for the cable context menu. This fixes a compile/startup failure introduced by recent Graph edits on some systems.
