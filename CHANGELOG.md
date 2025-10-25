@@ -1,3 +1,22 @@
+## v3.5.1 (2025-10-24)
+### UI
+- Jack Graph: Full manual control restored and expanded.
+  - Right-click cables: Lock/Unlock protected pair and Disconnect (disabled when locked).
+  - Right-click port: Disconnect all connections on that port and Copy port name.
+  - Clean layout: client names align with port labels; consistent row spacing; clearer labels on both columns.
+  - Sexy cables: curved, antialiased lines with rounded caps and subtle weights.
+- Stereo control: Keep discreet L/R control via per-port connects and the Patchboard’s stereo pair actions.
+
+### Reliability
+- Graph tab can optionally auto-reconnect VLC → Rivendell Record-In when inputs are free, respecting the Settings toggle (same behavior as Patchboard watcher).
+
+### Fixed
+- Context menu reliability on cables/ports (explicit mouse button acceptance) and event dispatch for path-based edges.
+- Minor indentation cleanup and compile-time guard stability.
+
+### Packaging
+- Prepare 3.5.1 with the Graph UI/UX improvements.
+
 ## v3.5.0 (2025-10-24)
 ### Added
 - JACK Auto-Reconnect watcher: automatically reconnects VLC outputs to Rivendell Record-In when inputs are free. Best-effort and non-destructive; retries periodically and never overrides existing sources.

@@ -21,9 +21,9 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QScrollArea, QFormLayout, QDialog, QDialogButtonBox,
                             QSizePolicy, QSystemTrayIcon, QMenu,
                             QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
-                            QGraphicsLineItem, QGraphicsTextItem)
+                            QGraphicsLineItem, QGraphicsTextItem, QGraphicsPathItem)
 from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF
-from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor
+from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainterPath
 import urllib.request
 import shutil
 import shlex
@@ -1536,11 +1536,15 @@ class JackGraphTab(QWidget):
     Preview version designed to complement the Patchboard.
     """
 
-    def __init__(self):
+    def __init__(self, main=None):
         super().__init__()
+        self.main = main
         self.scene = QGraphicsScene(self)
         self.view = QGraphicsView(self.scene, self)
-        self.view.setRenderHints(self.view.renderHints())
+        try:
+            self.view.setRenderHints(self.view.renderHints() | QPainter.Antialiasing | QPainter.TextAntialiasing | QPainter.SmoothPixmapTransform)
+        except Exception:
+            pass
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
         # Improve zoom behavior
         try:
@@ -1563,8 +1567,29 @@ class JackGraphTab(QWidget):
         self._drag_src_item = None
         self._drag_hover_item = None
         self._drag_started = False
+        # Layout constants for tidy alignment
+        self._layout = {
+            "row_h": 26,
+            "left_dot_x": 320,
+            "right_dot_x": 680,
+            "port_label_offset": 12,   # gap between dot and port label
+            "client_label_gap": 10,    # gap between client label and its port labels
+            "left_port_label_x": 320 - 180,   # left column port labels
+            "left_client_label_x": 320 - 180 - 160,
+            "right_port_label_x": 680 + 12,   # right column port labels
+            "right_client_label_x": 680 + 12 + 180,
+        }
+
         self._setup_ui()
         self.refresh()
+        # Auto-reconnect watcher for VLC → Rivendell Record-In (optional)
+        try:
+            self._vlc_watch_timer = QTimer(self)
+            self._vlc_watch_timer.setInterval(1500)
+            self._vlc_watch_timer.timeout.connect(self._vlc_autoreconnect_tick)
+            self._vlc_watch_timer.start()
+        except Exception:
+            pass
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -1919,9 +1944,10 @@ class JackGraphTab(QWidget):
         out = res.stdout or base.stdout
         self.ports = self._parse_ports(out)
         self.connections = self._list_connections()
-        # Layout: outputs on left, inputs on right
-        left_x = 50
-        right_x = 650
+        # Layout: outputs on left, inputs on right (tidy aligned columns)
+        L = self._layout
+        left_x = L["left_dot_x"]
+        right_x = L["right_dot_x"]
         y = 20
         port_items = {}
         header_font = QFont(); header_font.setBold(True)
@@ -1930,16 +1956,16 @@ class JackGraphTab(QWidget):
             outs = self.ports[client].get("out", [])
             if not outs:
                 continue
-            # Put client label outside (left) to keep center clear
+            # Place client label aligned with the first port label
+            y2 = y + 4
             title = self.scene.addText(client)
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
-            title.setPos(left_x - 160, y)
-            y2 = y + 20
+            title.setPos(L["left_client_label_x"], y2 - 10)
             for p in outs:
                 item = self._add_port_node(p, QPointF(left_x, y2), is_output=True)
                 port_items[p] = item
-                y2 += 22
+                y2 += L["row_h"]
             y = max(y2 + 10, y + 60)
         # Right column
         y = 20
@@ -1947,16 +1973,16 @@ class JackGraphTab(QWidget):
             ins = self.ports[client].get("in", [])
             if not ins:
                 continue
-            # Put client label outside (right) to keep center clear
+            # Place client label aligned with the first port label
+            y2 = y + 4
             title = self.scene.addText(client)
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
-            title.setPos(right_x + 20, y)
-            y2 = y + 20
+            title.setPos(L["right_client_label_x"], y2 - 10)
             for p in ins:
                 item = self._add_port_node(p, QPointF(right_x, y2), is_output=False)
                 port_items[p] = item
-                y2 += 22
+                y2 += L["row_h"]
             y = max(y2 + 10, y + 60)
         # Edges
         for sp, dp in self.connections:
@@ -1984,6 +2010,10 @@ class JackGraphTab(QWidget):
         ell.setPos(pos)
         ell.setZValue(2)
         ell.setFlag(ell.ItemIsSelectable, True)
+        try:
+            ell.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        except Exception:
+            pass
         # Attach metadata for drag/drop logic
         try:
             ell.setData(0, fullport)   # full port name
@@ -1992,8 +2022,12 @@ class JackGraphTab(QWidget):
             pass
         # label
         lab = QGraphicsTextItem(fullport.split(":",1)[1])
-        # Place labels outward to keep center uncluttered
-        lab.setPos(pos + QPointF(-180 if is_output else 12, -10))
+        # Place labels in tidy columns
+        L = self._layout
+        if is_output:
+            lab.setPos(QPointF(L["left_port_label_x"], pos.y() - 10))
+        else:
+            lab.setPos(QPointF(L["right_port_label_x"], pos.y() - 10))
         lab.setDefaultTextColor(QColor("#2c3e50"))
         self.scene.addItem(lab)
         self.scene.addItem(ell)
@@ -2084,6 +2118,34 @@ class JackGraphTab(QWidget):
             self._drag_started = False
 
         def on_press(event):
+            if event.button() == Qt.RightButton:
+                # Context menu: disconnects for this port, copy name
+                try:
+                    menu = QMenu()
+                    act_disc_all = menu.addAction("Disconnect all on this port")
+                    act_copy = menu.addAction("Copy port name")
+                    chosen = menu.exec_(event.screenPos().toPoint())
+                    if chosen == act_disc_all:
+                        try:
+                            cons = self._list_connections()
+                            p = fullport
+                            for s,d in cons:
+                                if s == p or d == p:
+                                    try:
+                                        self._jack_disconnect(s, d)
+                                    except Exception:
+                                        pass
+                            self.refresh()
+                        except Exception:
+                            pass
+                    elif chosen == act_copy:
+                        try:
+                            QApplication.clipboard().setText(fullport)
+                        except Exception:
+                            pass
+                    return
+                except Exception:
+                    pass
             if event.button() == Qt.LeftButton:
                 ell._press_pos = event.scenePos()
             return super(QGraphicsEllipseItem, ell).mousePressEvent(event)
@@ -2204,17 +2266,32 @@ class JackGraphTab(QWidget):
     def _add_edge(self, sp_item: QGraphicsEllipseItem, dp_item: QGraphicsEllipseItem):
         p1 = sp_item.scenePos()
         p2 = dp_item.scenePos()
-        line = QGraphicsLineItem(p1.x()+6, p1.y(), p2.x()-6, p2.y())
+        # Curved, sexy cable using cubic Bezier
+        path = QPainterPath(QPointF(p1.x()+6, p1.y()))
+        dx = max(40.0, abs(p2.x() - p1.x()) * 0.35)
+        c1 = QPointF(p1.x() + dx, p1.y())
+        c2 = QPointF(p2.x() - dx, p2.y())
+        path.cubicTo(c1, c2, QPointF(p2.x()-6, p2.y()))
+        line = QGraphicsPathItem(path)
         s_client = sp_item.toolTip().split(":",1)[0]
         d_client = dp_item.toolTip().split(":",1)[0]
         key = f"{s_client}→{d_client}"
         is_prot = key in self.critical_pairs
         pen = QPen(QColor("#e67e22") if is_prot else QColor("#34495e"))
-        pen.setWidth(3 if is_prot else 2)
+        pen.setWidth(4 if is_prot else 3)
+        try:
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+        except Exception:
+            pass
         line.setPen(pen)
         line.setZValue(1)
         line.setToolTip(f"{sp_item.toolTip()} → {dp_item.toolTip()}")
         line.setFlag(line.ItemIsSelectable, True)
+        try:
+            line.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        except Exception:
+            pass
         self.scene.addItem(line)
 
         # Add a small state icon near the middle of the line
@@ -2224,6 +2301,10 @@ class JackGraphTab(QWidget):
         icon.setDefaultTextColor(QColor("#e67e22") if is_prot else QColor("#7f8c8d"))
         icon.setPos(midx - 6, midy - 10)
         icon.setZValue(1.5)
+        try:
+            icon.setAcceptedMouseButtons(Qt.NoButton)
+        except Exception:
+            pass
         self.scene.addItem(icon)
 
         def on_line_press(event):
@@ -2250,9 +2331,65 @@ class JackGraphTab(QWidget):
                         self._save_protected_pairs()
                     self.refresh()
                 return
-            return super(QGraphicsLineItem, line).mousePressEvent(event)
+            return super(QGraphicsPathItem, line).mousePressEvent(event)
 
         line.mousePressEvent = on_line_press
+
+    # ---- Settings and watcher ----
+    def _setting_enabled(self, key: str, default: bool = True) -> bool:
+        try:
+            if self.main and hasattr(self.main, "_settings"):
+                return bool(self.main._settings.get(key, default))
+        except Exception:
+            pass
+        return default
+
+    def _vlc_autoreconnect_tick(self):
+        """Ensure VLC outputs feed Rivendell Record-In when present and inputs are free."""
+        try:
+            if not self._setting_enabled('auto_reconnect_vlc', True):
+                return
+            base = self._run(["jack_lsp"], timeout=0.6)
+            if base.returncode != 0:
+                return
+            res = self._run(["jack_lsp", "-p"], timeout=0.9)
+            out = res.stdout or base.stdout
+            ports = self._parse_ports(out)
+            cons = self._list_connections()
+
+            def find_like(names, direction, need=2):
+                for c in sorted(ports.keys()):
+                    lc = c.lower()
+                    if any(n in lc for n in names):
+                        if len(ports.get(c, {}).get(direction, [])) >= need:
+                            return c
+                return None
+
+            vlc = find_like(["vlc"], "out")
+            rd_in = find_like(["rivendell", "rd"], "in")
+            if not (vlc and rd_in):
+                return
+            s_ports = (ports.get(vlc, {}).get("out", []) or [])
+            d_ports = (ports.get(rd_in, {}).get("in", []) or [])
+            s_ports = self._first_two(s_ports)
+            d_ports = self._first_two(d_ports)
+            if len(s_ports) != 2 or len(d_ports) != 2:
+                return
+            # Check if RD inputs already have any source
+            dp0_has = any(dst == d_ports[0] for (_, dst) in cons)
+            dp1_has = any(dst == d_ports[1] for (_, dst) in cons)
+            if dp0_has and dp1_has:
+                return
+            try:
+                if not dp0_has:
+                    self._jack_connect(s_ports[0], d_ports[0])
+                if not dp1_has:
+                    self._jack_connect(s_ports[1], d_ports[1])
+            except Exception:
+                pass
+            # Do not refresh here; next periodic refresh/interaction will redraw
+        except Exception:
+            pass
 
     # ----- Quick actions -----
     def auto_connect(self):
@@ -5306,7 +5443,7 @@ class RDXBroadcastControlCenter(QMainWindow):
 
         # Visual Graph (preview)
         try:
-            self.jack_graph = JackGraphTab()
+            self.jack_graph = JackGraphTab(self)
             self.tab_widget.addTab(self.jack_graph, "🕸️ JACK Graph")
         except Exception:
             # Non-fatal if graphics are unavailable
