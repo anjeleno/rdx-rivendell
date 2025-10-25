@@ -1,3 +1,13 @@
+## v3.6.3 (2025-10-25)
+### Fixed
+- Graph/Profile crash: use QBrush(Qt.NoBrush) for invisible edge hit-areas to avoid `setBrush(...): unexpected type 'BrushStyle'` on some PyQt5 builds.
+
+### Reliability & UX
+- JACK connect errors now include actionable guidance when failures reference memlock/shared-memory issues (e.g., BDB2034, `/dev/shm/jack_db-<uid>`, "Cannot lock down ..."), covering audio group membership, PAM limits, /dev/shm space, and safely clearing a wedged metadata DB.
+
+### Packaging
+- Patch bump to publish the crash fix and enhanced error guidance.
+
 ## v3.6.2 (2025-10-25)
 ### Services & Streaming
 - Liquidsoap now runs via a per-user systemd unit `rdx-liquidsoap` with JACK readiness gating. The unit is auto-created/updated on start and prefers the OPAM shim in `~/.local/bin` via PATH override. `ExecStartPre` calls `/usr/local/bin/jack-wait-ready.sh` when present to avoid race conditions.
