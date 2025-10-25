@@ -1,3 +1,12 @@
+## v3.6.1 (2025-10-25)
+### UI
+- Jack Graph: Explicit Lock and Unlock actions in the cable menu (both shown; only the relevant one enabled). Disconnect remains, disabled only when protected unless "Ignore Protected Locks" is on.
+- Simplified per-channel control: removed Mono duplication options (no more "Mono Left/Right → both inputs"). Keep the one-tap "Make Stereo Pair (L→L, R→R)" convenience; otherwise patch per-port (L/R) independently.
+- Layout spacing: increased gap between device names and the first port label to avoid overlap on both columns.
+
+### Packaging
+- Prepare 3.6.1 with Graph UX refinements.
+
 ## v3.6.0 (2025-10-25)
 ### UI
 - Jack Graph: Robust scene-level right-click menus for both cables and port dots; larger invisible hit areas ensure clicks register even in VM/xRDP sessions.
