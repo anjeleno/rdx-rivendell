@@ -84,7 +84,7 @@ say() { echo -e "$*"; }
 run() {
   say "> $*"
   if ! $DRY_RUN; then
-    eval "$@"
+    "$@"
   fi
 }
 
