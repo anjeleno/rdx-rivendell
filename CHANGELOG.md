@@ -1,3 +1,10 @@
+## v3.5.4 (2025-10-24)
+### Fixed
+- Jack Graph: Resolved an `IndentationError` in `_add_edge` and corrected handler bindings scope for the cable context menu. This fixes a compile/startup failure introduced by recent Graph edits on some systems.
+
+### Packaging
+- Rebuilt `.deb` as 3.5.4 with the fix.
+
 ## v3.5.3 (2025-10-24)
 ### Fixed
 - Startup crash on some systems (Python 3.10): NameError in Jack Graph edge handler. Refactored cable context menu binding to use a class method with lambda wrapper, avoiding nested-local function issues during packaging.

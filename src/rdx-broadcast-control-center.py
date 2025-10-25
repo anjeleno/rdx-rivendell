@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QSizePolicy, QSystemTrayIcon, QMenu,
                             QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
                             QGraphicsLineItem, QGraphicsTextItem, QGraphicsPathItem)
-from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF
+from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF, QEvent
 from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainterPath
 import urllib.request
 import shutil
@@ -1538,6 +1538,11 @@ class JackGraphTab(QWidget):
             pass
         # Avoid rubber-band selection interfering with right-click menus
         self.view.setDragMode(QGraphicsView.NoDrag)
+        # Route context menu events through this widget for reliable right-click handling
+        try:
+            self.view.viewport().installEventFilter(self)
+        except Exception:
+            pass
         # Improve zoom behavior
         try:
             self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
@@ -1561,7 +1566,7 @@ class JackGraphTab(QWidget):
         self._drag_started = False
         # Layout constants for tidy alignment
         self._layout = {
-            "row_h": 26,
+            "row_h": 30,
             "left_dot_x": 320,
             "right_dot_x": 680,
             "port_label_offset": 12,   # gap between dot and port label
@@ -1964,7 +1969,7 @@ class JackGraphTab(QWidget):
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
             title.setPos(L["left_port_label_x"], y)
-            y2 = y + 16
+            y2 = y + 24
             for p in outs:
                 item = self._add_port_node(p, QPointF(left_x, y2), is_output=True)
                 port_items[p] = item
@@ -1981,7 +1986,7 @@ class JackGraphTab(QWidget):
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
             title.setPos(L["right_port_label_x"], y)
-            y2 = y + 16
+            y2 = y + 24
             for p in ins:
                 item = self._add_port_node(p, QPointF(right_x, y2), is_output=False)
                 port_items[p] = item
@@ -2295,6 +2300,13 @@ class JackGraphTab(QWidget):
             line.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
         except Exception:
             pass
+        # Tag for context menu lookup
+        try:
+            line.setData(99, "edge")
+            line.setData(100, sp_item.toolTip())
+            line.setData(101, dp_item.toolTip())
+        except Exception:
+            pass
         self.scene.addItem(line)
 
         # Add a small state icon near the middle of the line
@@ -2319,19 +2331,30 @@ class JackGraphTab(QWidget):
             hit.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
         except Exception:
             pass
+        try:
+            hit.setData(99, "edge")
+            hit.setData(100, sp_item.toolTip())
+            hit.setData(101, dp_item.toolTip())
+        except Exception:
+            pass
         self.scene.addItem(hit)
 
         # Bind context menu handler via lambda wrapper to avoid nested def issues on some systems
-        handler = lambda event, self=self, line=line, sp_item=sp_item, dp_item=dp_item, is_prot=is_prot, key=key: self._edge_context_menu(line, sp_item, dp_item, is_prot, key, event)
+        handler = lambda event, self=self, obj=line, is_prot=is_prot: self._edge_context_menu_event(obj, event)
         line.mousePressEvent = handler
-        hit.mousePressEvent = handler
+        hit.mousePressEvent = lambda event, self=self, obj=hit, is_prot=is_prot: self._edge_context_menu_event(obj, event)
 
-    def _edge_context_menu(self, line_obj, sp_item, dp_item, is_prot, key, event):
+    def _edge_context_menu(self, sp_full: str, dp_full: str, event):
         try:
             if event.button() != Qt.RightButton:
-                return super(QGraphicsPathItem, line_obj).mousePressEvent(event)
+                return False
             menu = QMenu()
             act_disc = menu.addAction("Disconnect")
+            # Lock state computed live
+            s_client = sp_full.split(":",1)[0]
+            d_client = dp_full.split(":",1)[0]
+            key = f"{s_client}→{d_client}"
+            is_prot = key in self.critical_pairs
             if is_prot:
                 act_disc.setEnabled(False)
             act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
@@ -2339,10 +2362,16 @@ class JackGraphTab(QWidget):
             act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
             act_mono_l = menu.addAction("Mono Left → both inputs")
             act_mono_r = menu.addAction("Mono Right → both inputs")
+            menu.addSeparator()
+            # Independent L/R actions
+            act_conn_l = menu.addAction("Connect Left → Left")
+            act_conn_r = menu.addAction("Connect Right → Right")
+            act_disc_l = menu.addAction("Disconnect Left")
+            act_disc_r = menu.addAction("Disconnect Right")
             chosen = menu.exec_(event.screenPos().toPoint())
             if chosen == act_disc:
                 try:
-                    self._jack_disconnect(sp_item.toolTip(), dp_item.toolTip())
+                    self._jack_disconnect(sp_full, dp_full)
                     self.refresh()
                 except Exception as e:
                     QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
@@ -2350,19 +2379,16 @@ class JackGraphTab(QWidget):
                 if is_prot:
                     if key in self.critical_pairs:
                         self.critical_pairs.remove(key)
-                        self._save_protected_pairs()
                 else:
                     self.critical_pairs.add(key)
-                    self._save_protected_pairs()
+                self._save_protected_pairs()
                 self.refresh()
-            elif chosen in (act_stereo, act_mono_l, act_mono_r):
+            elif chosen in (act_stereo, act_mono_l, act_mono_r, act_conn_l, act_conn_r, act_disc_l, act_disc_r):
                 try:
-                    s_client = sp_item.toolTip().split(":",1)[0]
-                    d_client = dp_item.toolTip().split(":",1)[0]
                     s_ports = self._first_two(self.ports.get(s_client,{}).get("out",[]))
                     d_ports = self._first_two(self.ports.get(d_client,{}).get("in",[]))
                     if len(d_ports) < 2:
-                        return
+                        return True
                     if chosen == act_stereo:
                         if len(s_ports) >= 2:
                             try:
@@ -2371,28 +2397,82 @@ class JackGraphTab(QWidget):
                             except Exception:
                                 pass
                     elif chosen == act_mono_l:
-                        src = s_ports[0] if s_ports else sp_item.toolTip()
+                        src = s_ports[0] if s_ports else sp_full
                         try:
                             self._jack_connect(src, d_ports[0])
                             self._jack_connect(src, d_ports[1])
                         except Exception:
                             pass
                     elif chosen == act_mono_r:
-                        src = (s_ports[1] if len(s_ports) > 1 else sp_item.toolTip())
+                        src = (s_ports[1] if len(s_ports) > 1 else sp_full)
                         try:
                             self._jack_connect(src, d_ports[0])
                             self._jack_connect(src, d_ports[1])
                         except Exception:
                             pass
+                    elif chosen == act_conn_l:
+                        if len(s_ports) >= 1:
+                            self._jack_connect(s_ports[0], d_ports[0])
+                    elif chosen == act_conn_r:
+                        if len(s_ports) >= 2:
+                            self._jack_connect(s_ports[1], d_ports[1])
+                    elif chosen == act_disc_l:
+                        if len(s_ports) >= 1:
+                            self._jack_disconnect(s_ports[0], d_ports[0])
+                    elif chosen == act_disc_r:
+                        if len(s_ports) >= 2:
+                            self._jack_disconnect(s_ports[1], d_ports[1])
                     self.refresh()
                 except Exception:
                     pass
-            return
+            return True
         except Exception:
             try:
-                return super(QGraphicsPathItem, line_obj).mousePressEvent(event)
+                return False
             except Exception:
                 pass
+        return False
+
+    def _edge_context_menu_event(self, obj, event):
+        # Mouse press handler that delegates to the context menu if right-click
+        try:
+            if hasattr(event, 'button') and event.button() == Qt.RightButton:
+                sp_full = obj.data(100)
+                dp_full = obj.data(101)
+                if sp_full and dp_full:
+                    return self._edge_context_menu(sp_full, dp_full, event)
+            # Fallback to default
+            return super(QGraphicsPathItem, obj).mousePressEvent(event)
+        except Exception:
+            return False
+
+    def eventFilter(self, obj, event):
+        # Intercept viewport context menu events to ensure menus appear instead of selection rectangles
+        try:
+            if obj is self.view.viewport() and event.type() == QEvent.ContextMenu:
+                scene_pos = self.view.mapToScene(event.pos())
+                for it in self.scene.items(scene_pos):
+                    try:
+                        if isinstance(it, QGraphicsPathItem) and it.data(99) == "edge":
+                            # Synthesize a right-button event-like object with screenPos
+                            class _Ev:
+                                def __init__(self, screen):
+                                    self._screen = screen
+                                def button(self):
+                                    return Qt.RightButton
+                                def screenPos(self):
+                                    return self._screen
+                            screen_pt = self.view.mapToGlobal(event.pos())
+                            ev = _Ev(screen_pt)
+                            handled = self._edge_context_menu(it.data(100), it.data(101), ev)
+                            if handled:
+                                return True
+                    except Exception:
+                        continue
+                return False
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
 
     # ---- Settings and watcher ----
     def _setting_enabled(self, key: str, default: bool = True) -> bool:
