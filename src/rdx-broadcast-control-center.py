@@ -23,7 +23,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                             QGraphicsView, QGraphicsScene, QGraphicsEllipseItem,
                             QGraphicsLineItem, QGraphicsTextItem, QGraphicsPathItem)
 from PyQt5.QtCore import Qt, QProcess, QTimer, pyqtSignal, QThread, QPointF, QPoint
-from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainterPath, QCursor
+from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainterPath, QCursor, QBrush
 import urllib.request
 import shutil
 import shlex
@@ -2473,9 +2473,10 @@ class JackGraphTab(QWidget):
         self.scene.addItem(icon)
 
         # Add a wide transparent hit-area to make right-clicking easier
-        hit = QGraphicsPathItem(path)
-        hit.setPen(QPen(QColor(0,0,0,0), 14))
-        hit.setBrush(Qt.NoBrush)
+    hit = QGraphicsPathItem(path)
+    hit.setPen(QPen(QColor(0,0,0,0), 14))
+    # setBrush expects a QBrush/QColor; pass a brush with NoBrush style
+    hit.setBrush(QBrush(Qt.NoBrush))
         hit.setZValue(1.6)
         try:
             hit.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
@@ -2984,7 +2985,25 @@ class JackGraphTab(QWidget):
             # Some systems return a generic "cannot connect client" even when already connected
             if "cannot connect" in low and self._connected(src_port, dst_port):
                 return
-            raise RuntimeError(msg)
+            # Enrich with actionable guidance for common JACK shared-memory/limits failures
+            hint = None
+            if ("bdb" in low or "metadata db" in low or "/dev/shm/jack_db" in low or "mutex" in low) or ("cannot lock down" in low):
+                try:
+                    uid = os.getuid()
+                except Exception:
+                    uid = None
+                shm_path = f"/dev/shm/jack_db-{uid}" if uid is not None else "/dev/shm/jack_db-<uid>"
+                hint = (
+                    "\n\nSuggestions:\n"
+                    "- Increase realtime limits: add to /etc/security/limits.d/audio.conf and re-login:\n"
+                    "    @audio - rtprio 95\n    @audio - memlock unlimited\n    @audio - nice -19\n"
+                    "- Ensure your user is in the 'audio' group (then log out/in):\n"
+                    "    sudo usermod -aG audio $USER\n"
+                    "- Make sure /dev/shm has free space: df -h /dev/shm\n"
+                    f"- If the JACK metadata DB is wedged, stop JACK/clients and clear: sudo rm -rf {shm_path}\n"
+                    "  (Only after fully stopping jackd/jackdbus; it will be recreated automatically.)\n"
+                )
+            raise RuntimeError(msg + (hint or ""))
 
     def _jack_disconnect(self, src_port: str, dst_port: str):
         self._run(["jack_disconnect", src_port, dst_port], timeout=1.2)
