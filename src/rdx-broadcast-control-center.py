@@ -2406,10 +2406,10 @@ class JackGraphTab(QWidget):
         c2 = QPointF(p2.x() - dx, p2.y())
         path.cubicTo(c1, c2, QPointF(p2.x()-6, p2.y()))
         line = QGraphicsPathItem(path)
-    s_client = sp_item.toolTip().split(":",1)[0]
-    d_client = dp_item.toolTip().split(":",1)[0]
-    key = f"{s_client}→{d_client}"
-    is_prot = (key in self.critical_pairs) and (not getattr(self, "_ignore_protection", False))
+        s_client = sp_item.toolTip().split(":",1)[0]
+        d_client = dp_item.toolTip().split(":",1)[0]
+        key = f"{s_client}→{d_client}"
+        is_prot = (key in self.critical_pairs) and (not getattr(self, "_ignore_protection", False))
         pen = QPen(QColor("#e67e22") if is_prot else QColor("#34495e"))
         pen.setWidth(4 if is_prot else 3)
         try:
@@ -2470,8 +2470,8 @@ class JackGraphTab(QWidget):
                 return
             return super(QGraphicsPathItem, line).mousePressEvent(event)
 
-    line.mousePressEvent = on_line_press
-    hit.mousePressEvent = on_line_press
+        line.mousePressEvent = on_line_press
+        hit.mousePressEvent = on_line_press
 
     def _show_port_menu(self, fullport: str, screen_pos):
         try:
