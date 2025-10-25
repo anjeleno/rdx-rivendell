@@ -38,6 +38,8 @@ DRY_RUN=true
 DO_PUBLISH=true
 DO_PUSH=true
 ALLOW_DIRTY=false
+# Auto-fix obvious indentation issues by default using our normalizer during preflight
+AUTO_FIX=true
 
 # Subcommand alias: "bump [patch|minor|major]"
 if [[ ${1:-} == "bump" ]]; then
@@ -63,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     --no-publish) DO_PUBLISH=false; shift;;
     --no-push) DO_PUSH=false; shift;;
     --allow-dirty) ALLOW_DIRTY=true; shift;;
+    --no-auto-fix) AUTO_FIX=false; shift;;
     -h|--help)
       sed -n '1,80p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -208,6 +211,30 @@ if $FROM_CHANGELOG; then
 fi
 
 say "Building Debian package for $VERSION"
+
+# Preflight: compile-check Python and attempt auto-fix if needed
+if $DRY_RUN; then
+  say "[dry-run] Would compile-check $PY_FILE and auto-fix indentation if needed"
+else
+  say "Preflight: compile-checking $PY_FILE"
+  if ! python3 -m py_compile "$PY_FILE" 2>/dev/null; then
+    if $AUTO_FIX; then
+      say "Preflight: compile failed; attempting indentation normalization"
+      if [[ -f scripts/fix-rdx-app-indentation.py ]]; then
+        python3 scripts/fix-rdx-app-indentation.py --file "$PY_FILE" --write --backup || true
+      fi
+      if ! python3 -m py_compile "$PY_FILE" 2>/dev/null; then
+        echo "Preflight failed: $PY_FILE still does not compile after normalization." >&2
+        exit 1
+      fi
+      say "Preflight: source compiles after normalization"
+    else
+      echo "Preflight failed: $PY_FILE does not compile. Re-run with fixes or enable auto-fix." >&2
+      exit 1
+    fi
+  fi
+fi
+
 run bash "$BUILD_SCRIPT"
 
 ASSET="releases/rdx-broadcast-control-center_${VERSION}_amd64.deb"
