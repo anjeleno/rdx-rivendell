@@ -2321,71 +2321,78 @@ class JackGraphTab(QWidget):
             pass
         self.scene.addItem(hit)
 
-        def on_line_press(event):
-            if event.button() == Qt.RightButton:
-                menu = QMenu()
-                act_disc = menu.addAction("Disconnect")
-                if is_prot:
-                    act_disc.setEnabled(False)
-                act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
-                menu.addSeparator()
-                # Stereo/Mono actions for the two endpoint clients
-                act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
-                act_mono_l = menu.addAction("Mono Left → both inputs")
-                act_mono_r = menu.addAction("Mono Right → both inputs")
-                chosen = menu.exec_(event.screenPos().toPoint())
-                if chosen == act_disc:
-                    try:
-                        self._jack_disconnect(sp_item.toolTip(), dp_item.toolTip())
-                        self.refresh()
-                    except Exception as e:
-                        QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
-                elif chosen == act_lock:
-                    if is_prot:
-                        if key in self.critical_pairs:
-                            self.critical_pairs.remove(key)
-                            self._save_protected_pairs()
-                    else:
-                        self.critical_pairs.add(key)
-                        self._save_protected_pairs()
-                    self.refresh()
-                elif chosen in (act_stereo, act_mono_l, act_mono_r):
-                    try:
-                        s_client = sp_item.toolTip().split(":",1)[0]
-                        d_client = dp_item.toolTip().split(":",1)[0]
-                        s_ports = self._first_two(self.ports.get(s_client,{}).get("out",[]))
-                        d_ports = self._first_two(self.ports.get(d_client,{}).get("in",[]))
-                        if len(d_ports) < 2:
-                            return
-                        if chosen == act_stereo:
-                            if len(s_ports) >= 2:
-                                try:
-                                    self._jack_connect(s_ports[0], d_ports[0])
-                                    self._jack_connect(s_ports[1], d_ports[1])
-                                except Exception:
-                                    pass
-                        elif chosen == act_mono_l:
-                            src = s_ports[0] if s_ports else sp_item.toolTip()
-                            try:
-                                self._jack_connect(src, d_ports[0])
-                                self._jack_connect(src, d_ports[1])
-                            except Exception:
-                                pass
-                        elif chosen == act_mono_r:
-                            src = (s_ports[1] if len(s_ports) > 1 else sp_item.toolTip())
-                            try:
-                                self._jack_connect(src, d_ports[0])
-                                self._jack_connect(src, d_ports[1])
-                            except Exception:
-                                pass
-                        self.refresh()
-                    except Exception:
-                        pass
-                return
-            return super(QGraphicsPathItem, line).mousePressEvent(event)
+        # Bind context menu handler via lambda wrapper to avoid nested def issues on some systems
+        handler = lambda event, self=self, line=line, sp_item=sp_item, dp_item=dp_item, is_prot=is_prot, key=key: self._edge_context_menu(line, sp_item, dp_item, is_prot, key, event)
+        line.mousePressEvent = handler
+        hit.mousePressEvent = handler
 
-    line.mousePressEvent = on_line_press
-    hit.mousePressEvent = on_line_press
+    def _edge_context_menu(self, line_obj, sp_item, dp_item, is_prot, key, event):
+        try:
+            if event.button() != Qt.RightButton:
+                return super(QGraphicsPathItem, line_obj).mousePressEvent(event)
+            menu = QMenu()
+            act_disc = menu.addAction("Disconnect")
+            if is_prot:
+                act_disc.setEnabled(False)
+            act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
+            menu.addSeparator()
+            act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
+            act_mono_l = menu.addAction("Mono Left → both inputs")
+            act_mono_r = menu.addAction("Mono Right → both inputs")
+            chosen = menu.exec_(event.screenPos().toPoint())
+            if chosen == act_disc:
+                try:
+                    self._jack_disconnect(sp_item.toolTip(), dp_item.toolTip())
+                    self.refresh()
+                except Exception as e:
+                    QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
+            elif chosen == act_lock:
+                if is_prot:
+                    if key in self.critical_pairs:
+                        self.critical_pairs.remove(key)
+                        self._save_protected_pairs()
+                else:
+                    self.critical_pairs.add(key)
+                    self._save_protected_pairs()
+                self.refresh()
+            elif chosen in (act_stereo, act_mono_l, act_mono_r):
+                try:
+                    s_client = sp_item.toolTip().split(":",1)[0]
+                    d_client = dp_item.toolTip().split(":",1)[0]
+                    s_ports = self._first_two(self.ports.get(s_client,{}).get("out",[]))
+                    d_ports = self._first_two(self.ports.get(d_client,{}).get("in",[]))
+                    if len(d_ports) < 2:
+                        return
+                    if chosen == act_stereo:
+                        if len(s_ports) >= 2:
+                            try:
+                                self._jack_connect(s_ports[0], d_ports[0])
+                                self._jack_connect(s_ports[1], d_ports[1])
+                            except Exception:
+                                pass
+                    elif chosen == act_mono_l:
+                        src = s_ports[0] if s_ports else sp_item.toolTip()
+                        try:
+                            self._jack_connect(src, d_ports[0])
+                            self._jack_connect(src, d_ports[1])
+                        except Exception:
+                            pass
+                    elif chosen == act_mono_r:
+                        src = (s_ports[1] if len(s_ports) > 1 else sp_item.toolTip())
+                        try:
+                            self._jack_connect(src, d_ports[0])
+                            self._jack_connect(src, d_ports[1])
+                        except Exception:
+                            pass
+                    self.refresh()
+                except Exception:
+                    pass
+            return
+        except Exception:
+            try:
+                return super(QGraphicsPathItem, line_obj).mousePressEvent(event)
+            except Exception:
+                pass
 
     # ---- Settings and watcher ----
     def _setting_enabled(self, key: str, default: bool = True) -> bool:

@@ -1,3 +1,13 @@
+## v3.5.3 (2025-10-24)
+### Fixed
+- Startup crash on some systems (Python 3.10): NameError in Jack Graph edge handler. Refactored cable context menu binding to use a class method with lambda wrapper, avoiding nested-local function issues during packaging.
+
+### UI
+- No functional changes; same Graph improvements as 3.5.2.
+
+### Packaging
+- Rebuilt with the handler refactor to ensure reliability across Python versions.
+
 ## v3.5.2 (2025-10-24)
 ### UI
 - Jack Graph: Right‑click reliably opens context menu on cables (no more rubber‑band box). Added a larger invisible hit area to make clicks easy.
