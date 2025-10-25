@@ -82,6 +82,10 @@ debian/.debhelper/
 test_*
 .pytest_cache/
 
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
 # Logs
 *.log
 
