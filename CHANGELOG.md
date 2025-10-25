@@ -1,3 +1,20 @@
+## v3.5.2 (2025-10-24)
+### UI
+- Jack Graph: Right‑click reliably opens context menu on cables (no more rubber‑band box). Added a larger invisible hit area to make clicks easy.
+- Context Menu on cables: Disconnect, Lock/Unlock, and new Stereo options: Make Stereo Pair (L→L, R→R), Mono Left→both inputs, Mono Right→both inputs.
+- Layout polish: Device names are above and left‑aligned with their port labels; consistent row spacing; curved, antialiased, rounded cables.
+- Graph‑local control: “Auto VLC → Rivendell Record‑In” toggle moved to the Graph tab.
+
+### Behavior
+- Auto‑Connect hardening: avoids obvious feedback loops (e.g., Rivendell ↔ Stereo Tool).
+- Auto‑Reconnect scope: watcher now runs from the Graph tab only; Matrix tab watcher removed to avoid duplication.
+
+### Service Control
+- Added “Launch Order & Timing” section: reorder JACK, Stereo Tool, Liquidsoap, Icecast and set per‑service delays; includes a “Start In Order” action.
+
+### Packaging
+- Prepare 3.5.2 with the above fixes and UI/UX improvements.
+
 ## v3.5.1 (2025-10-24)
 ### UI
 - Jack Graph: Full manual control restored and expanded.

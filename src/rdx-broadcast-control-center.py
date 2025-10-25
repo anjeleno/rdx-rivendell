@@ -1092,16 +1092,7 @@ class JackMatrixTab(QWidget):
 
         # Initialize
         self.refresh_jack_connections()
-
-        # Auto-reconnect watcher for VLC → Rivendell Record-In
-        try:
-            self._vlc_reconnect_last = 0.0
-            self._vlc_watch_timer = QTimer(self)
-            self._vlc_watch_timer.setInterval(1500)  # 1.5s cadence
-            self._vlc_watch_timer.timeout.connect(self._vlc_autoreconnect_tick)
-            self._vlc_watch_timer.start()
-        except Exception:
-            pass
+        # Note: auto-reconnect watcher lives on the Graph tab (user-facing control)
 
     # ---- JACK helpers (Matrix) ----
     def refresh_jack_connections(self):
@@ -1545,7 +1536,8 @@ class JackGraphTab(QWidget):
             self.view.setRenderHints(self.view.renderHints() | QPainter.Antialiasing | QPainter.TextAntialiasing | QPainter.SmoothPixmapTransform)
         except Exception:
             pass
-        self.view.setDragMode(QGraphicsView.RubberBandDrag)
+        # Avoid rubber-band selection interfering with right-click menus
+        self.view.setDragMode(QGraphicsView.NoDrag)
         # Improve zoom behavior
         try:
             self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
@@ -1616,10 +1608,21 @@ class JackGraphTab(QWidget):
                 pass
             self._fit_pending = False
         btn_fit.clicked.connect(_do_fit)
+        # Patch-specific toggle on this tab
+        self.chk_vlc_reconnect = QCheckBox("Auto VLC → Rivendell Record-In")
+        try:
+            # Initialize from global settings if present
+            if self.main and hasattr(self.main, "_settings"):
+                self.chk_vlc_reconnect.setChecked(bool(self.main._settings.get('auto_reconnect_vlc', True)))
+            self.chk_vlc_reconnect.stateChanged.connect(self._on_graph_vlc_toggle)
+        except Exception:
+            pass
+
         bar.addWidget(btn_refresh)
         bar.addWidget(btn_auto)
         bar.addWidget(btn_emerg)
         bar.addStretch(1)
+        bar.addWidget(self.chk_vlc_reconnect)
         bar.addWidget(btn_zoom_out)
         bar.addWidget(btn_zoom_in)
         bar.addWidget(btn_fit)
@@ -1956,34 +1959,34 @@ class JackGraphTab(QWidget):
             outs = self.ports[client].get("out", [])
             if not outs:
                 continue
-            # Place client label aligned with the first port label
-            y2 = y + 4
+            # Place client label above its port labels, left-justified with them
             title = self.scene.addText(client)
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
-            title.setPos(L["left_client_label_x"], y2 - 10)
+            title.setPos(L["left_port_label_x"], y)
+            y2 = y + 16
             for p in outs:
                 item = self._add_port_node(p, QPointF(left_x, y2), is_output=True)
                 port_items[p] = item
                 y2 += L["row_h"]
-            y = max(y2 + 10, y + 60)
+            y = y2 + 8
         # Right column
         y = 20
         for client in sorted(self.ports.keys(), key=lambda x: x.lower()):
             ins = self.ports[client].get("in", [])
             if not ins:
                 continue
-            # Place client label aligned with the first port label
-            y2 = y + 4
+            # Place client label above its port labels, left-justified with them
             title = self.scene.addText(client)
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
-            title.setPos(L["right_client_label_x"], y2 - 10)
+            title.setPos(L["right_port_label_x"], y)
+            y2 = y + 16
             for p in ins:
                 item = self._add_port_node(p, QPointF(right_x, y2), is_output=False)
                 port_items[p] = item
                 y2 += L["row_h"]
-            y = max(y2 + 10, y + 60)
+            y = y2 + 8
         # Edges
         for sp, dp in self.connections:
             sp_item = port_items.get(sp)
@@ -2307,6 +2310,17 @@ class JackGraphTab(QWidget):
             pass
         self.scene.addItem(icon)
 
+        # Add a wide transparent hit-area to make right-clicking easier
+        hit = QGraphicsPathItem(path)
+        hit.setPen(QPen(QColor(0,0,0,0), 14))
+        hit.setBrush(Qt.NoBrush)
+        hit.setZValue(1.6)
+        try:
+            hit.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        except Exception:
+            pass
+        self.scene.addItem(hit)
+
         def on_line_press(event):
             if event.button() == Qt.RightButton:
                 menu = QMenu()
@@ -2314,6 +2328,11 @@ class JackGraphTab(QWidget):
                 if is_prot:
                     act_disc.setEnabled(False)
                 act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
+                menu.addSeparator()
+                # Stereo/Mono actions for the two endpoint clients
+                act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
+                act_mono_l = menu.addAction("Mono Left → both inputs")
+                act_mono_r = menu.addAction("Mono Right → both inputs")
                 chosen = menu.exec_(event.screenPos().toPoint())
                 if chosen == act_disc:
                     try:
@@ -2330,10 +2349,43 @@ class JackGraphTab(QWidget):
                         self.critical_pairs.add(key)
                         self._save_protected_pairs()
                     self.refresh()
+                elif chosen in (act_stereo, act_mono_l, act_mono_r):
+                    try:
+                        s_client = sp_item.toolTip().split(":",1)[0]
+                        d_client = dp_item.toolTip().split(":",1)[0]
+                        s_ports = self._first_two(self.ports.get(s_client,{}).get("out",[]))
+                        d_ports = self._first_two(self.ports.get(d_client,{}).get("in",[]))
+                        if len(d_ports) < 2:
+                            return
+                        if chosen == act_stereo:
+                            if len(s_ports) >= 2:
+                                try:
+                                    self._jack_connect(s_ports[0], d_ports[0])
+                                    self._jack_connect(s_ports[1], d_ports[1])
+                                except Exception:
+                                    pass
+                        elif chosen == act_mono_l:
+                            src = s_ports[0] if s_ports else sp_item.toolTip()
+                            try:
+                                self._jack_connect(src, d_ports[0])
+                                self._jack_connect(src, d_ports[1])
+                            except Exception:
+                                pass
+                        elif chosen == act_mono_r:
+                            src = (s_ports[1] if len(s_ports) > 1 else sp_item.toolTip())
+                            try:
+                                self._jack_connect(src, d_ports[0])
+                                self._jack_connect(src, d_ports[1])
+                            except Exception:
+                                pass
+                        self.refresh()
+                    except Exception:
+                        pass
                 return
             return super(QGraphicsPathItem, line).mousePressEvent(event)
 
-        line.mousePressEvent = on_line_press
+    line.mousePressEvent = on_line_press
+    hit.mousePressEvent = on_line_press
 
     # ---- Settings and watcher ----
     def _setting_enabled(self, key: str, default: bool = True) -> bool:
@@ -2391,10 +2443,18 @@ class JackGraphTab(QWidget):
         except Exception:
             pass
 
+    def _on_graph_vlc_toggle(self, _state):
+        try:
+            val = bool(self.chk_vlc_reconnect.isChecked())
+            if self.main and hasattr(self.main, "_settings"):
+                self.main._settings['auto_reconnect_vlc'] = val
+                self.main.save_settings()
+        except Exception:
+            pass
+
     # ----- Quick actions -----
     def auto_connect(self):
-        # Simple delegate to MatrixTab heuristics using subprocess connect
-        # Use current graph state to pick clients
+        # Simple delegate using current graph state; avoid creating feedback loops
         def find_like(names, direction):
             for c in sorted(self.ports.keys()):
                 lc = c.lower()
@@ -2410,12 +2470,16 @@ class JackGraphTab(QWidget):
         ls_out = find_like(["liquidsoap"], "out")
         sys_play = find_like(["system"], "in")
         actions = []
+        existing = set((s.split(":",1)[0], d.split(":",1)[0]) for (s,d) in self._list_connections())
         def pair(a,b):
             return f"{a}→{b}" if a and b else None
         for a,b in ((rd,st),(st,ls_in),(ls_out,sys_play)):
             if a and b:
                 s_ports = self._first_two(self.ports.get(a,{}).get("out",[]))
                 d_ports = self._first_two(self.ports.get(b,{}).get("in",[]))
+                # Avoid connecting if reverse path exists to prevent feedback (b→a already)
+                if ((b,a) in existing) or ((a,b) in existing and a==b):
+                    continue
                 if len(s_ports)==2 and len(d_ports)==2:
                     try:
                         self._jack_connect(s_ports[0], d_ports[0])
@@ -3212,7 +3276,7 @@ class ServiceControlTab(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-        # Individual Service Controls
+    # Individual Service Controls
         services_group = QGroupBox("🛠️ Individual Service Controls")
         services_layout = QGridLayout(services_group)
         
@@ -5266,6 +5330,49 @@ class SettingsTab(QWidget):
         gl.addWidget(btn_stop, 2, 2)
         layout.addWidget(auto_group)
 
+        # Launch Order & Timing
+        order_group = QGroupBox("🚦 Launch Order & Timing")
+        ol = QVBoxLayout(order_group)
+        from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem
+        self.order_table = QTableWidget(0, 3, order_group)
+        self.order_table.setHorizontalHeaderLabels(["Service", "Delay (s)", "Actions"])
+        self.order_table.horizontalHeader().setStretchLastSection(True)
+        ol.addWidget(self.order_table)
+
+        btn_row = QHBoxLayout()
+        btn_up = QPushButton("⬆️ Move Up")
+        btn_down = QPushButton("⬇️ Move Down")
+        btn_save = QPushButton("💾 Save Order")
+        btn_start = QPushButton("▶️ Start In Order")
+        btn_row.addWidget(btn_up); btn_row.addWidget(btn_down)
+        btn_row.addStretch(1)
+        btn_row.addWidget(btn_save); btn_row.addWidget(btn_start)
+        ol.addLayout(btn_row)
+        layout.addWidget(order_group)
+
+        # Populate table from settings or defaults
+        self._init_launch_order_ui()
+
+        def do_up():
+            r = self.order_table.currentRow()
+            if r > 0:
+                self._swap_order_rows(r, r-1)
+                self.order_table.selectRow(r-1)
+        def do_down():
+            r = self.order_table.currentRow()
+            if r >= 0 and r < self.order_table.rowCount()-1:
+                self._swap_order_rows(r, r+1)
+                self.order_table.selectRow(r+1)
+        def do_save():
+            self._save_launch_order()
+        def do_start():
+            self._start_services_in_order()
+
+        btn_up.clicked.connect(do_up)
+        btn_down.clicked.connect(do_down)
+        btn_save.clicked.connect(do_save)
+        btn_start.clicked.connect(do_start)
+
         # System Tray settings
         tray_group = QGroupBox("🧰 System Tray")
         hl = QHBoxLayout(tray_group)
@@ -5279,21 +5386,7 @@ class SettingsTab(QWidget):
         hl.addWidget(btn_hide_now)
         layout.addWidget(tray_group)
 
-        # JACK Auto-Reconnect settings
-        reconnect_group = QGroupBox("🔄 JACK Auto-Reconnect")
-        rl = QHBoxLayout(reconnect_group)
-        self.chk_vlc_reconnect = QCheckBox("Auto-reconnect VLC → Rivendell Record-In")
-        # Default to enabled when missing
-        try:
-            default_enabled = bool(self.main._settings.get('auto_reconnect_vlc', True))
-        except Exception:
-            default_enabled = True
-        self.chk_vlc_reconnect.setChecked(default_enabled)
-        self.chk_vlc_reconnect.setToolTip("When VLC or Rivendell ports appear or restart, automatically connect VLC outputs to Rivendell Record-In if those inputs have no existing source.")
-        self.chk_vlc_reconnect.stateChanged.connect(self.on_vlc_reconnect_toggle)
-        rl.addWidget(self.chk_vlc_reconnect)
-        rl.addStretch(1)
-        layout.addWidget(reconnect_group)
+        # JACK Auto-Reconnect moved to Graph tab (per user request)
 
         layout.addStretch(1)
 
@@ -5386,6 +5479,120 @@ WantedBy=default.target
         try:
             self.main._settings['auto_reconnect_vlc'] = bool(self.chk_vlc_reconnect.isChecked())
             self.main.save_settings()
+        except Exception:
+            pass
+
+    # ---- Launch order helpers ----
+    def _init_launch_order_ui(self):
+        try:
+            # Default order
+            order = ['jack', 'stereo_tool', 'liquidsoap', 'icecast']
+            delays = {k: 2 for k in order}
+            if hasattr(self.main, '_settings'):
+                saved_order = self.main._settings.get('service_launch_order')
+                saved_delays = self.main._settings.get('service_delays')
+                if isinstance(saved_order, list) and all(k in self.services for k in saved_order):
+                    order = saved_order
+                if isinstance(saved_delays, dict):
+                    for k,v in saved_delays.items():
+                        try:
+                            delays[k] = int(v)
+                        except Exception:
+                            pass
+            from PyQt5.QtWidgets import QSpinBox
+            self.order_table.setRowCount(0)
+            for key in order:
+                info = self.services.get(key)
+                if not info: continue
+                r = self.order_table.rowCount(); self.order_table.insertRow(r)
+                self.order_table.setItem(r, 0, QTableWidgetItem(info['name']))
+                spin = QSpinBox(); spin.setRange(0, 60); spin.setValue(int(delays.get(key, 2)))
+                spin.setProperty('service_key', key)
+                self.order_table.setCellWidget(r, 1, spin)
+                # Actions cell: show systemd unit for clarity
+                unit = info.get('systemd') or ''
+                self.order_table.setItem(r, 2, QTableWidgetItem(unit))
+        except Exception:
+            pass
+
+    def _swap_order_rows(self, a: int, b: int):
+        try:
+            for col in (0,1,2):
+                if col == 1:
+                    wa = self.order_table.cellWidget(a, col)
+                    wb = self.order_table.cellWidget(b, col)
+                    self.order_table.removeCellWidget(a, col)
+                    self.order_table.removeCellWidget(b, col)
+                    self.order_table.setCellWidget(a, col, wb)
+                    self.order_table.setCellWidget(b, col, wa)
+                else:
+                    ia = self.order_table.takeItem(a, col)
+                    ib = self.order_table.takeItem(b, col)
+                    self.order_table.setItem(a, col, ib)
+                    self.order_table.setItem(b, col, ia)
+        except Exception:
+            pass
+
+    def _save_launch_order(self):
+        try:
+            order = []
+            delays = {}
+            from PyQt5.QtWidgets import QSpinBox
+            for r in range(self.order_table.rowCount()):
+                name_item = self.order_table.item(r,0)
+                spin = self.order_table.cellWidget(r,1)
+                # Map display name back to key
+                key = None
+                for k, info in self.services.items():
+                    if info['name'] == name_item.text():
+                        key = k; break
+                if key is None: continue
+                order.append(key)
+                if isinstance(spin, QSpinBox):
+                    delays[key] = int(spin.value())
+            if hasattr(self.main, '_settings'):
+                self.main._settings['service_launch_order'] = order
+                self.main._settings['service_delays'] = delays
+                self.main.save_settings()
+            QMessageBox.information(self, "Saved", "Launch order and delays saved.")
+        except Exception as e:
+            QMessageBox.warning(self, "Save Failed", f"Could not save order: {e}")
+
+    def _start_services_in_order(self):
+        try:
+            # Build sequence
+            seq = []
+            from PyQt5.QtWidgets import QSpinBox
+            for r in range(self.order_table.rowCount()):
+                name_item = self.order_table.item(r,0)
+                spin = self.order_table.cellWidget(r,1)
+                key = None
+                for k, info in self.services.items():
+                    if info['name'] == name_item.text():
+                        key = k; break
+                if key is None: continue
+                delay = int(spin.value()) if isinstance(spin, QSpinBox) else 0
+                seq.append((key, delay))
+
+            def step(i):
+                if i >= len(seq):
+                    QMessageBox.information(self, "Start Complete", "All services started in order.")
+                    self.refresh_status(); return
+                key, delay = seq[i]
+                self._start_service_key(key)
+                QTimer.singleShot(max(0, delay) * 1000, lambda: step(i+1))
+            step(0)
+        except Exception as e:
+            QMessageBox.warning(self, "Start Failed", f"Could not start ordered sequence: {e}")
+
+    def _start_service_key(self, key: str):
+        info = self.services.get(key)
+        if not info: return
+        args = ["systemctl"]
+        if info.get('user_service'): args += ["--user"]
+        args += ["start", info.get('systemd') or key]
+        try:
+            subprocess.run(args, check=False)
         except Exception:
             pass
 
