@@ -1,0 +1,33 @@
+# rdx-buttrc.sample — BUTT configuration template for RDX
+# This is a minimal example. The exact buttrc format can vary by version.
+# Recommended usage: Configure BUTT via its GUI once, enable "connect on startup",
+# then copy the resulting ~/.buttrc here for reference or deployment.
+
+[server-0]
+host=localhost
+port=8000
+password=hackm3
+mount=/stream.aac
+name=RDX Stream
+description=RDX Default AAC Stream
+url=http://localhost:8000/stream.aac
+public=0
+
+[audio]
+samplerate=48000
+channels=2
+# device=jack   # Enable JACK input device in the GUI
+
+[encoder]
+codec=aac
+bitrate=128
+
+[auto]
+auto_connect=1
+reconnect=1
+reconnect_delay=5
+
+# Notes:
+# - Enable JACK input in BUTT settings so it creates JACK input ports.
+# - Patch Stereo Tool L/R to BUTT L/R in the RDX Jack Graph.
+# - For multiple streams/mounts, run multiple BUTT instances with different profiles.

@@ -552,6 +552,12 @@ EOF
 EOF
 
     echo "✅ RDX installation completed"
+
+    # Install helper scripts
+    if [ -f ../scripts/jack-wait-ready.sh ]; then
+        sudo install -m 0755 ../scripts/jack-wait-ready.sh /usr/local/bin/jack-wait-ready.sh
+        echo "✅ Installed jack-wait-ready.sh to /usr/local/bin"
+    fi
 }
 
 # Create desktop integration

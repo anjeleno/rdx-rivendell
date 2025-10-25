@@ -1,0 +1,23 @@
+# darkice-rdx.service — Template unit to run DarkIce with RDX
+# Replace RDX_USER with the desktop user that runs JACK.
+
+[Unit]
+Description=DarkIce Encoder (RDX)
+After=jackdbus.service pipewire.service
+Wants=jackdbus.service
+
+[Service]
+Type=simple
+User=RDX_USER
+Group=audio
+Environment=JACK_NO_AUDIO_RESERVATION=1
+ExecStartPre=/usr/bin/env bash -lc "/usr/local/bin/jack-wait-ready.sh --timeout 30"
+ExecStart=/usr/bin/darkice -c /etc/darkice/rdx-darkice.cfg
+Restart=always
+RestartSec=5
+
+# If using PipeWire JACK, you may need to export PipeWire environment
+# Environment=PIPEWIRE_RUNTIME_DIR=/run/user/%U
+
+[Install]
+WantedBy=default.target

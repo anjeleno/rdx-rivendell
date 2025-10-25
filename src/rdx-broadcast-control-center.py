@@ -501,6 +501,7 @@ class IcecastManagementTab(QWidget):
     def start_icecast(self):
         """Start Icecast service"""
         try:
+            # Use interactive sudo as before; you've confirmed this flow works reliably for you.
             subprocess.run(["sudo", "systemctl", "start", "icecast2"], check=True)
             self.status_label.setText("Status: ✅ Starting Icecast...")
         except subprocess.CalledProcessError:
@@ -1100,23 +1101,44 @@ class JackMatrixTab(QWidget):
         try:
             # Check if JACK is running
             try:
-                base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=0.7)
+                # First, a fast probe
+                base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=0.8)
             except subprocess.TimeoutExpired:
-                self.jack_status_label.setText("Status: ⏳ JACK Probe Timed Out")
-                self.jack_status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
-                return
+                # Retry with a longer timeout before giving up (VMs/xRDP can be slower)
+                try:
+                    base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=3.5)
+                except subprocess.TimeoutExpired:
+                    # As a last resort, if jackdbus says 'started', treat JACK as present
+                    jc = subprocess.run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"],
+                                        capture_output=True, text=True, timeout=1.5)
+                    if "started" in (jc.stdout or "").lower():
+                        base = subprocess.CompletedProcess(args=["jack_lsp"], returncode=0, stdout="", stderr="")
+                        self.jack_status_label.setText("Status: ✅ JACK Running (dbus)")
+                        self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+                    else:
+                        self.jack_status_label.setText("Status: ⏳ JACK Probe Timed Out")
+                        self.jack_status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                        # Do not hard-fail: preserve existing state and hint user to Refresh again
+                        return
             if base.returncode != 0:
-                self.jack_status_label.setText("Status: ❌ JACK Not Running")
-                self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
-                self.ports = {}
-                self.jack_clients = []
-                self.source_combo.clear()
-                self.dest_combo.clear()
-                self.jack_info.setPlainText("JACK is not running. Start JACK and refresh.")
-                return
+                # If jack_control reports started, tolerate a transient non-zero from jack_lsp
+                jc = subprocess.run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"],
+                                    capture_output=True, text=True, timeout=1.0)
+                if "started" in (jc.stdout or "").lower():
+                    self.jack_status_label.setText("Status: ✅ JACK Running (dbus)")
+                    self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+                else:
+                    self.jack_status_label.setText("Status: ❌ JACK Not Running")
+                    self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                    self.ports = {}
+                    self.jack_clients = []
+                    self.source_combo.clear()
+                    self.dest_combo.clear()
+                    self.jack_info.setPlainText("JACK is not running. Start JACK and refresh.")
+                    return
             # Ports with properties
             try:
-                res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True, timeout=0.7)
+                res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True, timeout=2.5)
             except subprocess.TimeoutExpired:
                 res = subprocess.CompletedProcess(args=["jack_lsp","-p"], returncode=1, stdout=base.stdout, stderr="")
             out = res.stdout if res.returncode == 0 else base.stdout
@@ -1127,8 +1149,12 @@ class JackMatrixTab(QWidget):
             self._populate_port_combos()
             # Info text
             self._update_info()
-            self.jack_status_label.setText("Status: ✅ JACK Running")
-            self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+            # If we previously marked dbus-running, keep that label; otherwise show Running
+            if "dbus" in (self.jack_status_label.text() or "").lower():
+                pass
+            else:
+                self.jack_status_label.setText("Status: ✅ JACK Running")
+                self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
         except FileNotFoundError:
             self.jack_status_label.setText("Status: ❌ JACK Tools Not Found")
             self.jack_status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
@@ -4125,20 +4151,36 @@ WantedBy=default.target
                         status_label.setText("❌ Stopped")
                         status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
                 elif service_key == 'liquidsoap':
-                    # Liquidsoap is launched as a user process (not a systemd unit)
-                    # Detect by process name to reflect actual running state
-                    try:
-                        proc_check = subprocess.run(["pgrep", "-x", "liquidsoap"], capture_output=True, timeout=0.7)
-                    except subprocess.TimeoutExpired:
-                        status_label.setText("⏳ Probe Timeout")
-                        status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
-                        continue
-                    if proc_check.returncode == 0:
-                        status_label.setText("✅ Running")
-                        status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+                    # Prefer user systemd unit status if present; otherwise fall back to process check
+                    unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-liquidsoap.service"
+                    if unit_path.exists():
+                        try:
+                            result = subprocess.run(["systemctl", "--user", "is-active", "rdx-liquidsoap"],
+                                                     capture_output=True, text=True, timeout=0.7)
+                        except subprocess.TimeoutExpired:
+                            status_label.setText("⏳ Probe Timeout")
+                            status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                            continue
+                        if result.stdout.strip() == "active":
+                            status_label.setText("✅ Running")
+                            status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+                        else:
+                            status_label.setText("❌ Stopped")
+                            status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
                     else:
-                        status_label.setText("❌ Stopped")
-                        status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                        # Detect by process name
+                        try:
+                            proc_check = subprocess.run(["pgrep", "-x", "liquidsoap"], capture_output=True, timeout=0.7)
+                        except subprocess.TimeoutExpired:
+                            status_label.setText("⏳ Probe Timeout")
+                            status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                            continue
+                        if proc_check.returncode == 0:
+                            status_label.setText("✅ Running")
+                            status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
+                        else:
+                            status_label.setText("❌ Stopped")
+                            status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
                 else:
                     # Check if it's a user service
                     if service_info.get('user_service', False):
@@ -4221,17 +4263,16 @@ WantedBy=default.target
                 QMessageBox.information(self, "JACK Start Requested", msg)
 
             elif service_key == 'liquidsoap':
-                # Start liquidsoap with generated config
+                # Start liquidsoap via per-user systemd unit (with JACK readiness), falling back to direct launch
                 config_dir = self.get_config_directory()
                 config_file = config_dir / "radio.liq"
                 log_file = config_dir / "liquidsoap.log"
 
                 # Verify liquidsoap is available
                 import shutil
-                # Check with augmented PATH and OPAM shim fallback
                 liq_bin = self._liquidsoap_bin()
-                liq_in_path = shutil.which("liquidsoap") is not None
-                if not (liq_in_path or (os.path.isfile(liq_bin) and os.access(liq_bin, os.X_OK))):
+                liq_in_path = shutil.which("liquidsoap") is not None or (os.path.isfile(liq_bin) and os.access(liq_bin, os.X_OK))
+                if not liq_in_path:
                     QMessageBox.critical(self, "Liquidsoap Not Found",
                                          "The 'liquidsoap' command is not installed or not in PATH.\n\n"
                                          "Recommended: Build via OPAM (PPA-free) from the installer dialog, or run:\n"
@@ -4244,9 +4285,7 @@ WantedBy=default.target
                         has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
                         has_ffmpeg = self._has_liquidsoap_encoder("ffmpeg")
                         if not (has_fdkaac or has_ffmpeg):
-                            # Offer guided installation (OPAM preferred) if no AAC encoders are available
                             if self.prompt_install_ffmpeg_plugin():
-                                # Re-check after install
                                 has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
                                 has_ffmpeg = self._has_liquidsoap_encoder("ffmpeg")
                                 if not (has_fdkaac or has_ffmpeg):
@@ -4260,13 +4299,11 @@ WantedBy=default.target
                                                      "Options: Use MP3-only streams for now, or install Liquidsoap via OPAM for AAC support.")
                                 return
                 except Exception:
-                    # Don't block start if detection fails; parse-check will validate
                     pass
 
                 # Parse-check Liquidsoap config before launching
                 check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                 if check.returncode != 0:
-                    # Attempt auto-fix then strict fix as needed
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
                     check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
@@ -4280,43 +4317,60 @@ WantedBy=default.target
                                                  f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
                             return
 
-                if config_file.exists():
-                    try:
-                        log_fh = open(log_file, "a", buffering=1)
-                    except Exception:
-                        log_fh = None
-                    try:
-                        subprocess.Popen([self._liquidsoap_bin(), str(config_file)],
-                                         stdout=log_fh or subprocess.DEVNULL,
-                                         stderr=log_fh or subprocess.DEVNULL,
-                                         start_new_session=True,
-                                         env=self._subprocess_env_with_localbin())
-                        QMessageBox.information(self, "Liquidsoap Started",
-                                                f"Liquidsoap started with config: {config_file}\n\n"
-                                                f"Logs: {log_file}")
-                        # Refresh encoders line shortly after start
-                        QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
-                    except Exception as e:
-                        if log_fh:
-                            log_fh.close()
-                        QMessageBox.critical(self, "Liquidsoap Start Error",
-                                             f"Failed to launch Liquidsoap:\n{e}")
-                        return
-                    if log_fh:
-                        try:
-                            log_fh.close()
-                        except Exception:
-                            pass
-                else:
+                if not config_file.exists():
                     QMessageBox.warning(self, "No Config",
                                         "Please generate Liquidsoap configuration first in Stream Builder tab.")
+                    return
+
+                # Create/update the user systemd unit and try starting it
+                self._ensure_liquidsoap_unit(liq_bin=self._liquidsoap_bin(), config_file=config_file)
+                unit_exists = (Path.home() / ".config" / "systemd" / "user" / "rdx-liquidsoap.service").exists()
+                try:
+                    if unit_exists:
+                        subprocess.run(["systemctl", "--user", "start", "rdx-liquidsoap", "--no-block"], check=False)
+                        QMessageBox.information(self, "Liquidsoap Start Requested",
+                                                f"Liquidsoap user service starting with config: {config_file}\n\n"
+                                                f"Logs: {log_file}")
+                        QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
+                        return
+                except Exception:
+                    # Fall through to direct launch
+                    pass
+
+                # Fallback: launch directly if unit couldn't be created/used
+                try:
+                    log_fh = open(log_file, "a", buffering=1)
+                except Exception:
+                    log_fh = None
+                try:
+                    subprocess.Popen([self._liquidsoap_bin(), str(config_file)],
+                                     stdout=log_fh or subprocess.DEVNULL,
+                                     stderr=log_fh or subprocess.DEVNULL,
+                                     start_new_session=True,
+                                     env=self._subprocess_env_with_localbin())
+                    QMessageBox.information(self, "Liquidsoap Started",
+                                            f"Liquidsoap started with config: {config_file}\n\n"
+                                            f"Logs: {log_file}")
+                    QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
+                except Exception as e:
+                    if log_fh:
+                        log_fh.close()
+                    QMessageBox.critical(self, "Liquidsoap Start Error",
+                                         f"Failed to launch Liquidsoap:\n{e}")
+                    return
+                if log_fh:
+                    try:
+                        log_fh.close()
+                    except Exception:
+                        pass
 
             else:
                 # For other services, use systemctl
+                # Use --no-block so UI is never held while systemd stops/starts units.
                 if service_info.get('user_service', False):
-                    subprocess.run(["systemctl", "--user", "start", service_info['systemd']], check=True)
+                    subprocess.run(["systemctl", "--user", "start", service_info['systemd'], "--no-block"], check=False)
                 else:
-                    subprocess.run(["systemctl", "start", service_info['systemd']], check=True)
+                    subprocess.run(["systemctl", "start", service_info['systemd'], "--no-block"], check=False)
                 QMessageBox.information(self, f"{service_info['name']} Started",
                                         f"{service_info['name']} service started successfully.")
 
@@ -4344,13 +4398,18 @@ WantedBy=default.target
                 QMessageBox.information(self, "JACK Stop Requested", "Requested JACK shutdown.")
                 
             elif service_key == 'liquidsoap':
-                # Stop liquidsoap
-                subprocess.run(["killall", "liquidsoap"], check=False)
-                QMessageBox.information(self, "Liquidsoap Stopped", "Liquidsoap stopped.")
+                # Stop liquidsoap (prefer user unit if present)
+                unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-liquidsoap.service"
+                if unit_path.exists():
+                    subprocess.run(["systemctl", "--user", "stop", "rdx-liquidsoap", "--no-block"], check=False)
+                    QMessageBox.information(self, "Liquidsoap Stop Requested", "Liquidsoap user service stop requested.")
+                else:
+                    subprocess.run(["killall", "liquidsoap"], check=False)
+                    QMessageBox.information(self, "Liquidsoap Stopped", "Liquidsoap stopped.")
                 
             else:
-                # For other services, use systemctl
-                subprocess.run(["systemctl", "stop", service_info['systemd']], check=True)
+                # For other services, use systemctl non-blocking
+                subprocess.run(["systemctl", "stop", service_info['systemd'], "--no-block"], check=False)
                 QMessageBox.information(self, f"{service_info['name']} Stopped", 
                                       f"{service_info['name']} service stopped successfully.")
                 
@@ -4380,24 +4439,22 @@ WantedBy=default.target
                 QMessageBox.information(self, "JACK Restart Requested", msg)
 
             elif service_key == 'liquidsoap':
-                # Restart liquidsoap
-                subprocess.run(["killall", "liquidsoap"], check=False)
-                time.sleep(1)
-
+                # Restart liquidsoap (prefer user unit if present), with preflight parse-check
+                unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-liquidsoap.service"
                 config_dir = self.get_config_directory()
                 config_file = config_dir / "radio.liq"
                 log_file = config_dir / "liquidsoap.log"
 
-                # Verify liquidsoap is available
                 import shutil
-                if shutil.which("liquidsoap") is None:
+                liq_bin = self._liquidsoap_bin()
+                if shutil.which("liquidsoap") is None and not (os.path.isfile(liq_bin) and os.access(liq_bin, os.X_OK)):
                     QMessageBox.critical(self, "Liquidsoap Not Found",
                                          "The 'liquidsoap' command is not installed or not in PATH.\n\n"
                                          "Recommended: Build via OPAM (PPA-free) from the installer dialog, or run:\n"
                                          "  pkexec /bin/bash /usr/share/rdx/install-liquidsoap-opam.sh\n\n"
                                          "Alternative (may lack codecs):\n  sudo apt install liquidsoap")
                     return
-                # If AAC is requested by the config, ensure at least one AAC path is available
+
                 try:
                     if self._config_requests_aac(config_file):
                         has_fdkaac = self._has_liquidsoap_encoder("fdkaac")
@@ -4419,10 +4476,8 @@ WantedBy=default.target
                 except Exception:
                     pass
 
-                # Parse-check Liquidsoap config before launching
                 check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
                 if check.returncode != 0:
-                    # Attempt auto-fix then strict fix as needed
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
                     check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
@@ -4436,7 +4491,21 @@ WantedBy=default.target
                                                  f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
                             return
 
-                if config_file.exists():
+                if not config_file.exists():
+                    QMessageBox.warning(self, "No Config",
+                                        "Please generate Liquidsoap configuration first in Stream Builder tab.")
+                    return
+
+                if unit_path.exists():
+                    subprocess.run(["systemctl", "--user", "restart", "rdx-liquidsoap", "--no-block"], check=False)
+                    QMessageBox.information(self, "Liquidsoap Restart Requested",
+                                            f"Liquidsoap user service restarting with config: {config_file}\n\n"
+                                            f"Logs: {log_file}")
+                    QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
+                else:
+                    # Fallback to manual stop/start
+                    subprocess.run(["killall", "liquidsoap"], check=False)
+                    time.sleep(1)
                     try:
                         log_fh = open(log_file, "a", buffering=1)
                     except Exception:
@@ -4450,7 +4519,6 @@ WantedBy=default.target
                         QMessageBox.information(self, "Liquidsoap Restarted",
                                                 f"Liquidsoap restarted with config: {config_file}\n\n"
                                                 f"Logs: {log_file}")
-                        # Refresh encoders line shortly after restart
                         QTimer.singleShot(1000, lambda: self.update_liquidsoap_encoders_label(force=True))
                     except Exception as e:
                         if log_fh:
@@ -4463,16 +4531,13 @@ WantedBy=default.target
                             log_fh.close()
                         except Exception:
                             pass
-                else:
-                    QMessageBox.warning(self, "No Config",
-                                        "Please generate Liquidsoap configuration first in Stream Builder tab.")
 
             else:
                 # For other services, use systemctl
                 if service_info.get('user_service', False):
-                    subprocess.run(["systemctl", "--user", "restart", service_info['systemd']], check=True)
+                    subprocess.run(["systemctl", "--user", "restart", service_info['systemd'], "--no-block"], check=False)
                 else:
-                    subprocess.run(["systemctl", "restart", service_info['systemd']], check=True)
+                    subprocess.run(["systemctl", "restart", service_info['systemd'], "--no-block"], check=False)
                 QMessageBox.information(self, f"{service_info['name']} Restarted",
                                         f"{service_info['name']} service restarted successfully.")
 
@@ -5053,6 +5118,52 @@ WantedBy=default.target
             subprocess.run(["systemctl", "--user", "enable", "rdx-stereotool-active"], check=False)
         except Exception:
             # Non-fatal; Service Control will still allow manual start attempts
+            pass
+
+        # ---- Liquidsoap user-service helper (systemd user unit) ----
+    def _ensure_liquidsoap_unit(self, liq_bin: str, config_file: Path):
+        """Create/update a per-user systemd unit to run Liquidsoap with our config.
+        Unit: rdx-liquidsoap.service under ~/.config/systemd/user
+        Includes JACK readiness gate (ExecStartPre) and an augmented PATH so the OPAM shim is honored.
+        """
+        try:
+            unit_dir = Path.home() / ".config" / "systemd" / "user"
+            unit_dir.mkdir(parents=True, exist_ok=True)
+            unit_path = unit_dir / "rdx-liquidsoap.service"
+
+            # Prefer readiness helper if installed
+            jack_wait = "/usr/local/bin/jack-wait-ready.sh"
+            has_jack_wait = os.path.isfile(jack_wait) and os.access(jack_wait, os.X_OK)
+
+            # Ensure config dir exists
+            cfg_dir = config_file.parent
+            cfg_dir.mkdir(parents=True, exist_ok=True)
+
+            # Environment PATH to prefer ~/.local/bin first (OPAM shim)
+            env_path = str(Path.home() / ".local" / "bin") + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+            pre = f"ExecStartPre={jack_wait} 30\n" if has_jack_wait else ""
+            unit = f"""[Unit]
+Description=RDX Liquidsoap (per-user)
+After=default.target
+Wants=default.target
+
+[Service]
+Type=simple
+{pre}Environment=PATH={env_path}
+ExecStart={liq_bin} {str(config_file)}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+"""
+            unit_path.write_text(unit, encoding="utf-8")
+            # Reload and enable so we can manage it
+            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+            subprocess.run(["systemctl", "--user", "enable", "rdx-liquidsoap"], check=False)
+        except Exception:
+            # Non-fatal; we'll fall back to direct process launch if needed
             pass
 
 

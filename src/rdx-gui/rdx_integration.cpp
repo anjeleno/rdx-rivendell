@@ -193,6 +193,7 @@ void RdxIntegration::performCustomRdxInstall(QWidget *parent)
   QCheckBox *icecast_check = new QCheckBox("🧊 Icecast2 (Streaming server)", widget);
   QCheckBox *vlc_check = new QCheckBox("🎥 VLC Media Player (Essential for RDX)", widget);
   QCheckBox *darkice_check = new QCheckBox("🌙 DarkIce (Simple streaming encoder)", widget);
+  QCheckBox *butt_check = new QCheckBox("🎙️ BUTT (Broadcast Using This Tool - Simple encoder)", widget);
   QCheckBox *glasscoder_check = new QCheckBox("🔮 GlassCoder (Multi-format encoder)", widget);
   
   // Set recommended defaults
@@ -204,6 +205,7 @@ void RdxIntegration::performCustomRdxInstall(QWidget *parent)
   layout->addWidget(icecast_check);
   layout->addWidget(vlc_check);
   layout->addWidget(darkice_check);
+  layout->addWidget(butt_check);
   layout->addWidget(glasscoder_check);
   
   // Add note about Stereo Tool
@@ -225,11 +227,79 @@ void RdxIntegration::performCustomRdxInstall(QWidget *parent)
     if (liquidsoap_check->isChecked()) selected_tools << "liquidsoap";
     if (icecast_check->isChecked()) selected_tools << "icecast2";
     if (vlc_check->isChecked()) selected_tools << "vlc";
-    if (darkice_check->isChecked()) selected_tools << "darkice";
+  if (darkice_check->isChecked()) selected_tools << "darkice";
+  if (butt_check->isChecked()) selected_tools << "butt";
     if (glasscoder_check->isChecked()) selected_tools << "glasscoder";
     
     performCustomInstallWithTools(parent, selected_tools);
   }
+}
+
+void RdxIntegration::performCustomInstallWithTools(QWidget *parent, const QStringList &tools)
+{
+  if (tools.isEmpty()) {
+    QMessageBox::information(parent, "Nothing to Install", "No tools selected.");
+    return;
+  }
+
+  // Simple installer: detect package manager and install selected packages
+  auto runCmd = [&](const QString &program, const QStringList &args, int timeoutMs = 600000) -> bool {
+    QProcess p;
+    p.start(program, args);
+    if (!p.waitForStarted(5000)) return false;
+    while (p.state() != QProcess::NotRunning) {
+      QApplication::processEvents();
+      p.waitForFinished(200);
+    }
+    Q_UNUSED(timeoutMs);
+    return p.exitCode() == 0;
+  };
+
+  // Detect package manager
+  bool haveApt = runCmd("bash", {"-lc", "command -v apt-get >/dev/null 2>&1"});
+  bool haveYum = !haveApt && runCmd("bash", {"-lc", "command -v yum >/dev/null 2>&1"});
+  QString pm = haveApt ? "apt" : (haveYum ? "yum" : "none");
+  if (pm == "none") {
+    QMessageBox::warning(parent, "Unsupported System", "Could not detect apt or yum. Please install tools manually.");
+    return;
+  }
+
+  QMessageBox progress(parent);
+  progress.setWindowTitle("Installing Selected Tools");
+  progress.setText("📦 Installing selected broadcast tools…");
+  progress.setStandardButtons(QMessageBox::NoButton);
+  progress.show();
+
+  auto installPkg = [&](const QString &pkg) {
+    if (pm == "apt") {
+      runCmd("bash", {"-lc", QString("sudo apt-get update && sudo apt-get install -y %1").arg(pkg)});
+    } else {
+      runCmd("bash", {"-lc", QString("sudo yum install -y %1").arg(pkg)});
+    }
+  };
+
+  for (const QString &t : tools) {
+    if (t == "liquidsoap") {
+      installPkg("liquidsoap liquidsoap-plugin-all liquidsoap-plugin-ffmpeg");
+    } else if (t == "icecast2") {
+      installPkg("icecast2");
+    } else if (t == "vlc") {
+      installPkg("vlc vlc-plugin-jack");
+    } else if (t == "darkice") {
+      installPkg("darkice");
+    } else if (t == "butt") {
+      installPkg("butt");
+    } else if (t == "glasscoder") {
+      // Try package first; if unavailable, advise manual install
+      bool ok = runCmd("bash", {"-lc", pm == "apt" ? "sudo apt-get install -y glasscoder" : "sudo yum install -y glasscoder"});
+      if (!ok) {
+        QMessageBox::information(parent, "GlassCoder", "Package not available. Please install GlassCoder manually (see docs).");
+      }
+    }
+  }
+
+  progress.close();
+  QMessageBox::information(parent, "Installation Complete", "✅ Selected tools installed (where available)." );
 }
 
 void RdxIntegration::showManualInstallInstructions(QWidget *parent)

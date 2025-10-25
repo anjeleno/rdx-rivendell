@@ -1,3 +1,15 @@
+## v3.6.2 (2025-10-25)
+### Services & Streaming
+- Liquidsoap now runs via a per-user systemd unit `rdx-liquidsoap` with JACK readiness gating. The unit is auto-created/updated on start and prefers the OPAM shim in `~/.local/bin` via PATH override. `ExecStartPre` calls `/usr/local/bin/jack-wait-ready.sh` when present to avoid race conditions.
+- Services tab controls Liquidsoap through the user unit with non-blocking start/stop/restart; falls back to direct process control if the unit is unavailable. Status detection prefers the unit state when present.
+- Preserved policy: Icecast control remains interactive (sudo prompts unchanged).
+
+### Reliability
+- JACK detection remains robust when Rivendell manages jackd; readiness gating prevents “client open” and “probe timeout” false negatives.
+
+### Packaging
+- Bump to publish the Liquidsoap systemd integration and Services UX polish.
+
 ## v3.6.1 (2025-10-25)
 ### UI
 - Jack Graph: Explicit Lock and Unlock actions in the cable menu (both shown; only the relevant one enabled). Disconnect remains, disabled only when protected unless "Ignore Protected Locks" is on.
