@@ -6,6 +6,8 @@ set -euo pipefail
 # - Commits, tags, pushes, and publishes GitHub Release with attached asset
 #
 # Usage examples:
+#   scripts/release-rdx.sh bump            # alias: --bump patch --prepare-changelog --from-changelog (dry-run by default)
+#   scripts/release-rdx.sh bump minor --yes
 #   scripts/release-rdx.sh --bump patch --yes --from-changelog
 #   scripts/release-rdx.sh --version 3.4.15 --yes --from-changelog
 #   scripts/release-rdx.sh --bump minor --dry-run
@@ -36,6 +38,19 @@ DRY_RUN=true
 DO_PUBLISH=true
 DO_PUSH=true
 ALLOW_DIRTY=false
+
+# Subcommand alias: "bump [patch|minor|major]"
+if [[ ${1:-} == "bump" ]]; then
+  shift || true
+  case "${1:-patch}" in
+    patch|minor|major) BUMP="$1"; shift || true;;
+    *) BUMP="patch";;
+  esac
+  # Map to normal protocol defaults
+  FROM_CHANGELOG=true
+  PREPARE_CHANGELOG=true
+  # Note: we keep default DRY_RUN=true unless --yes is explicitly provided
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
