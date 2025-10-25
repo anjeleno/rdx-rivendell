@@ -560,6 +560,64 @@ EOF
     fi
 }
 
+# Ensure realtime audio permissions and limits for smooth JACK operation
+configure_realtime_audio() {
+    echo "🔒 Ensuring realtime audio permissions and limits..."
+
+    # Ensure 'audio' group exists
+    if ! getent group audio >/dev/null 2>&1; then
+        echo "   ➕ Creating 'audio' group"
+        sudo groupadd audio
+    fi
+
+    # Add current user to audio group
+    if id -nG "$USER" | tr ' ' '\n' | grep -qx "audio"; then
+        echo "   ✅ $USER already in 'audio' group"
+    else
+        echo "   ➕ Adding $USER to 'audio' group"
+        sudo usermod -aG audio "$USER"
+        ADDED_USER_AUDIO=1
+    fi
+
+    # Add Rivendell user to audio group if present
+    if id "$RD_USER" >/dev/null 2>&1; then
+        if id -nG "$RD_USER" | tr ' ' '\n' | grep -qx "audio"; then
+            echo "   ✅ $RD_USER already in 'audio' group"
+        else
+            echo "   ➕ Adding $RD_USER to 'audio' group"
+            sudo usermod -aG audio "$RD_USER"
+        fi
+    fi
+
+    # Configure PAM limits in /etc/security/limits.conf
+    LIM_CONF="/etc/security/limits.conf"
+    TMP_FILE=$(mktemp)
+    sudo cp "$LIM_CONF" "$TMP_FILE" 2>/dev/null || true
+
+    ensure_limit() {
+        local who="$1"; local type="$2"; local item="$3"; local value="$4"
+        # Remove any conflicting line for the same (who,item) pair, then append our desired one
+        if sudo grep -Eq "^\\s*${who}\\s+-\\s+${item}\\s+" "$LIM_CONF"; then
+            sudo sed -i "\/^\\s*${who}\\s+-\\s+${item}\\s\//d" "$LIM_CONF"
+        fi
+        echo "${who} - ${item} ${value}" | sudo tee -a "$LIM_CONF" >/dev/null
+    }
+
+    echo "   ⚙️  Applying rtprio/memlock limits to $LIM_CONF"
+    ensure_limit "@audio" "-" "rtprio" "99"
+    ensure_limit "@audio" "-" "memlock" "unlimited"
+    # Also set explicit limits for the Rivendell user
+    if id "$RD_USER" >/dev/null 2>&1; then
+        ensure_limit "$RD_USER" "-" "rtprio" "99"
+        ensure_limit "$RD_USER" "-" "memlock" "unlimited"
+    fi
+
+    echo "   ✅ Realtime audio configuration ensured"
+    if [ "${ADDED_USER_AUDIO:-0}" = "1" ]; then
+        echo "   ℹ️  You were added to the 'audio' group. Log out and back in (or reboot) for it to take effect."
+    fi
+}
+
 # Create desktop integration
 create_desktop_integration() {
     echo "🖥️ Creating desktop integration..."
@@ -666,6 +724,8 @@ main() {
         
         cd build
         install_rdx
+        # Always ensure audio group membership and PAM limits for JACK
+        configure_realtime_audio
         create_desktop_integration
     fi
     

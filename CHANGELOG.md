@@ -6,7 +6,10 @@
 - JACK connect errors now include actionable guidance when failures reference memlock/shared-memory issues (e.g., BDB2034, `/dev/shm/jack_db-<uid>`, "Cannot lock down ..."), covering audio group membership, PAM limits, /dev/shm space, and safely clearing a wedged metadata DB.
 
 ### Packaging
-- Patch bump to publish the crash fix and enhanced error guidance.
+- Installer: Ensure realtime audio setup during install:
+  - Create `audio` group if missing, add current user and `rd` to it
+  - Enforce `/etc/security/limits.conf` entries: `@audio - rtprio 99`, `@audio - memlock unlimited`, `rd - rtprio 99`, `rd - memlock unlimited`
+- Patch bump to publish the crash fix, enhanced error guidance, and installer realtime setup.
 
 ## v3.6.2 (2025-10-25)
 ### Services & Streaming

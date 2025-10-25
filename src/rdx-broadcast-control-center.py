@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.6.2
+RDX Professional Broadcast Control Center v3.6.3
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -2473,10 +2473,10 @@ class JackGraphTab(QWidget):
         self.scene.addItem(icon)
 
         # Add a wide transparent hit-area to make right-clicking easier
-    hit = QGraphicsPathItem(path)
-    hit.setPen(QPen(QColor(0,0,0,0), 14))
-    # setBrush expects a QBrush/QColor; pass a brush with NoBrush style
-    hit.setBrush(QBrush(Qt.NoBrush))
+        hit = QGraphicsPathItem(path)
+        hit.setPen(QPen(QColor(0,0,0,0), 14))
+        # setBrush expects a QBrush/QColor; pass a brush with NoBrush style
+        hit.setBrush(QBrush(Qt.NoBrush))
         hit.setZValue(1.6)
         try:
             hit.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
@@ -5919,7 +5919,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.6.2")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.6.3")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -5987,7 +5987,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.6.2")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.6.3")
 
         # ---- System tray ----
     def _setup_tray(self):
