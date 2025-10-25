@@ -2985,6 +2985,25 @@ class JackGraphTab(QWidget):
             # Some systems return a generic "cannot connect client" even when already connected
             if "cannot connect" in low and self._connected(src_port, dst_port):
                 return
+            # Try jackdbus Patchbay fallback to avoid metadata/MLock failures in jack_connect
+            try:
+                # Only attempt if jackdbus is running and dbus-send is available
+                jc = subprocess.run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"],
+                                    capture_output=True, text=True, timeout=1.5)
+                if "started" in (jc.stdout or "").lower():
+                    if shutil.which("dbus-send"):
+                        # org.jackaudio.JackPatchbay.ConnectPorts(source, dest)
+                        db = subprocess.run([
+                            "dbus-send","--print-reply","--type=method_call",
+                            "--dest=org.jackaudio.service",
+                            "/org/jackaudio/Patchbay",
+                            "org.jackaudio.JackPatchbay.ConnectPorts",
+                            f"string:{src_port}", f"string:{dst_port}"
+                        ], capture_output=True, text=True, timeout=2.0)
+                        if db.returncode == 0 and self._connected(src_port, dst_port):
+                            return
+            except Exception:
+                pass
             # Enrich with actionable guidance for common JACK shared-memory/limits failures
             hint = None
             if ("bdb" in low or "metadata db" in low or "/dev/shm/jack_db" in low or "mutex" in low) or ("cannot lock down" in low):
