@@ -1625,7 +1625,7 @@ class JackGraphTab(QWidget):
             "left_dot_x": 320,
             "right_dot_x": 680,
             "port_label_offset": 12,   # gap between dot and port label
-            "client_label_gap": 10,    # gap between client label and its port labels
+            "client_label_gap": 32,    # increased gap between client label and first port label
             "left_port_label_x": 320 - 180,   # left column port labels
             "left_client_label_x": 320 - 180 - 160,
             "right_port_label_x": 680 + 12,   # right column port labels
@@ -2072,7 +2072,7 @@ class JackGraphTab(QWidget):
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
             title.setPos(L["left_port_label_x"], y)
-            y2 = y + 16
+            y2 = y + L.get("client_label_gap", 16)
             for p in outs:
                 item = self._add_port_node(p, QPointF(left_x, y2), is_output=True)
                 port_items[p] = item
@@ -2089,7 +2089,7 @@ class JackGraphTab(QWidget):
             title.setFont(header_font)
             title.setDefaultTextColor(QColor("#2c3e50"))
             title.setPos(L["right_port_label_x"], y)
-            y2 = y + 16
+            y2 = y + L.get("client_label_gap", 16)
             for p in ins:
                 item = self._add_port_node(p, QPointF(right_x, y2), is_output=False)
                 port_items[p] = item
@@ -2507,15 +2507,19 @@ class JackGraphTab(QWidget):
             is_prot = (key in self.critical_pairs) and (not getattr(self, "_ignore_protection", False))
             menu = QMenu()
             act_disc = menu.addAction("Disconnect")
-            if is_prot:
+            if is_prot and not getattr(self, "_ignore_protection", False):
                 act_disc.setEnabled(False)
-            act_lock = menu.addAction("Unlock (unprotect)" if is_prot else "Lock (protect)")
+            # Explicit Lock and Unlock actions (one enabled depending on state)
+            act_lock = menu.addAction("Lock (protect)")
+            act_unlock = menu.addAction("Unlock (unprotect)")
             if getattr(self, "_ignore_protection", False):
                 act_lock.setEnabled(False)
+                act_unlock.setEnabled(False)
+            else:
+                act_lock.setEnabled(not is_prot)
+                act_unlock.setEnabled(is_prot)
             menu.addSeparator()
             act_stereo = menu.addAction("Make Stereo Pair (L→L, R→R)")
-            act_mono_l = menu.addAction("Mono Left → both inputs")
-            act_mono_r = menu.addAction("Mono Right → both inputs")
             chosen = menu.exec_(QPoint(int(screen_pos.x()), int(screen_pos.y())) if screen_pos else QCursor.pos())
             if chosen == act_disc:
                 try:
@@ -2523,41 +2527,26 @@ class JackGraphTab(QWidget):
                     self.refresh()
                 except Exception as e:
                     QMessageBox.critical(self, "JACK Error", f"Disconnect failed: {e}")
-            elif chosen == act_lock:
+            elif chosen in (act_lock, act_unlock):
                 if not getattr(self, "_ignore_protection", False):
-                    if is_prot:
+                    if chosen == act_lock and not is_prot:
+                        self.critical_pairs.add(key)
+                        self._save_protected_pairs()
+                    elif chosen == act_unlock and is_prot:
                         if key in self.critical_pairs:
                             self.critical_pairs.remove(key)
                             self._save_protected_pairs()
-                    else:
-                        self.critical_pairs.add(key)
-                        self._save_protected_pairs()
                     self.refresh()
-            elif chosen in (act_stereo, act_mono_l, act_mono_r):
+            elif chosen == act_stereo:
                 try:
                     s_ports = self._first_two(self.ports.get(s_client, {}).get("out", []))
                     d_ports = self._first_two(self.ports.get(d_client, {}).get("in", []))
                     if len(d_ports) < 2:
                         return
-                    if chosen == act_stereo:
-                        if len(s_ports) >= 2:
-                            try:
-                                self._jack_connect(s_ports[0], d_ports[0])
-                                self._jack_connect(s_ports[1], d_ports[1])
-                            except Exception:
-                                pass
-                    elif chosen == act_mono_l:
-                        src = s_ports[0] if s_ports else sp_full
+                    if len(s_ports) >= 2:
                         try:
-                            self._jack_connect(src, d_ports[0])
-                            self._jack_connect(src, d_ports[1])
-                        except Exception:
-                            pass
-                    elif chosen == act_mono_r:
-                        src = (s_ports[1] if len(s_ports) > 1 else sp_full)
-                        try:
-                            self._jack_connect(src, d_ports[0])
-                            self._jack_connect(src, d_ports[1])
+                            self._jack_connect(s_ports[0], d_ports[0])
+                            self._jack_connect(s_ports[1], d_ports[1])
                         except Exception:
                             pass
                     self.refresh()
