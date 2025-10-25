@@ -1,12 +1,22 @@
-## v3.6.4 (2025-10-25)
-### Reliability
-- QJackCtl-style JACK detection: fast probe via python-jack-client (no_start_server), with fallbacks to jack_control (dbus) and jackd process checks. Longer jack_lsp timeouts reduce false negatives when Rivendell manages jackd.
+## v3.7.0 (2025-10-25)
+### Fixed
+- JACK Graph profiles: "Save Current As…" now reliably saves to `~/.config/rdx/jack_profiles.json`.
+  - Removed an obsolete on-tab profiles block that referenced a non-existent combo box and clobbered the working dialog-based implementation.
 
-### UI
-- Graph and Patchboard now tolerate transient jack_lsp failures when the server is up, avoiding spurious "JACK is not running" states.
+### Services & Orchestration
+- Stereo Tool per-user unit now gates startup on readiness:
+  - Waits for JACK via `/usr/local/bin/jack-wait-ready.sh` when present.
+  - New `/usr/local/bin/encoder-wait-ready.sh` soft-waits up to 30s for an encoder JACK client (Liquidsoap/DarkIce/BUTT/GlassCoder) before starting Stereo Tool, reducing race conditions.
+- Service Control: Stereo Tool Start/Stop/Restart use non-blocking systemd calls and guide the user to activate an instance if none is configured.
+
+### Reliability
+- QJackCtl-style JACK detection across Matrix and Graph tabs:
+  - Fast python-jack-client probe (`no_start_server`) with fallbacks to `jack_control status` and `pgrep jackd`.
+  - Longer `jack_lsp` timeouts to avoid false negatives when Rivendell manages JACK.
 
 ### Packaging
-- Patch bump to publish improved detection.
+- Installer now also installs `encoder-wait-ready.sh` to `/usr/local/bin` alongside `jack-wait-ready.sh`.
+- Minor bump to publish the profile fix, Stereo Tool gating, and consolidated detection improvements.
 
 ## v3.6.3 (2025-10-25)
 ### Fixed

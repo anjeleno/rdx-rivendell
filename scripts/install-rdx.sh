@@ -558,6 +558,10 @@ EOF
         sudo install -m 0755 ../scripts/jack-wait-ready.sh /usr/local/bin/jack-wait-ready.sh
         echo "✅ Installed jack-wait-ready.sh to /usr/local/bin"
     fi
+    if [ -f ../scripts/encoder-wait-ready.sh ]; then
+        sudo install -m 0755 ../scripts/encoder-wait-ready.sh /usr/local/bin/encoder-wait-ready.sh
+        echo "✅ Installed encoder-wait-ready.sh to /usr/local/bin"
+    fi
 }
 
 # Ensure realtime audio permissions and limits for smooth JACK operation

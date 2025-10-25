@@ -2753,60 +2753,7 @@ class JackGraphTab(QWidget):
             QMessageBox.information(self, "Auto-Connect", "No suitable clients found for auto patching.")
         self.refresh()
 
-    # ----- Profiles actions -----
-    def save_current_as_profile(self):
-        try:
-            from PyQt5.QtWidgets import QInputDialog
-            # Refresh connections to ensure current
-            self.connections = self._list_connections()
-            name, ok = QInputDialog.getText(self, "Save Profile", "Profile name:")
-            if not ok or not name.strip():
-                return
-            key = name.strip()
-            # Store as list of [src, dst]
-            self.profiles[key] = [[s, d] for (s, d) in self.connections]
-            self._save_profiles()
-            self._refresh_profiles_combo()
-            self.profile_combo.setCurrentText(key)
-            QMessageBox.information(self, "Profile Saved", f"Saved profile '{key}' with {len(self.connections)} connections.")
-        except Exception as e:
-            QMessageBox.critical(self, "Save Profile", f"Could not save profile: {e}")
-
-    def apply_selected_profile(self):
-        try:
-            name = self.profile_combo.currentText().strip()
-            if not name or name not in self.profiles:
-                return
-            pairs = self.profiles.get(name, [])
-            applied = 0
-            for s, d in pairs:
-                try:
-                    # Only connect if both ports exist now
-                    if self._port_exists(s) and self._port_exists(d):
-                        self._jack_connect(s, d)
-                        applied += 1
-                except Exception:
-                    pass
-            self.refresh()
-            QMessageBox.information(self, "Profile Applied", f"Applied {applied}/{len(pairs)} connections from '{name}'.")
-        except Exception as e:
-            QMessageBox.critical(self, "Apply Profile", f"Could not apply profile: {e}")
-
-    def delete_selected_profile(self):
-        try:
-            name = self.profile_combo.currentText().strip()
-            if not name or name not in self.profiles:
-                return
-            reply = QMessageBox.question(self, "Delete Profile",
-                                         f"Delete profile '{name}'? This cannot be undone.",
-                                         QMessageBox.Yes | QMessageBox.No)
-            if reply != QMessageBox.Yes:
-                return
-            self.profiles.pop(name, None)
-            self._save_profiles()
-            self._refresh_profiles_combo()
-        except Exception as e:
-            QMessageBox.critical(self, "Delete Profile", f"Could not delete profile: {e}")
+    # (Old on-tab Profiles actions removed; using dialog-based save/apply/delete implementations above.)
 
     def _port_exists(self, port_full: str) -> bool:
         try:
@@ -4458,6 +4405,18 @@ WantedBy=default.target
                     except Exception:
                         pass
 
+                elif service_key == 'stereo_tool':
+                    # Ensure the user-unit exists and points to the active instance
+                    self._ensure_stereotool_unit()
+                    unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-stereotool-active.service"
+                    if not unit_path.exists():
+                        QMessageBox.information(self, "Stereo Tool Not Configured",
+                                                "No active Stereo Tool instance is set.\n\n"
+                                                "Open the 'Stereo Tool Manager' tab to add and activate one.")
+                        return
+                    subprocess.run(["systemctl", "--user", "start", "rdx-stereotool-active", "--no-block"], check=False)
+                    QMessageBox.information(self, "Stereo Tool Start Requested", "Stereo Tool user service starting.")
+
             else:
                 # For other services, use systemctl
                 # Use --no-block so UI is never held while systemd stops/starts units.
@@ -4500,6 +4459,10 @@ WantedBy=default.target
                 else:
                     subprocess.run(["killall", "liquidsoap"], check=False)
                     QMessageBox.information(self, "Liquidsoap Stopped", "Liquidsoap stopped.")
+            
+            elif service_key == 'stereo_tool':
+                subprocess.run(["systemctl", "--user", "stop", "rdx-stereotool-active", "--no-block"], check=False)
+                QMessageBox.information(self, "Stereo Tool Stop Requested", "Stereo Tool user service stop requested.")
                 
             else:
                 # For other services, use systemctl non-blocking
@@ -4625,6 +4588,18 @@ WantedBy=default.target
                             log_fh.close()
                         except Exception:
                             pass
+
+            elif service_key == 'stereo_tool':
+                # Ensure unit is current
+                self._ensure_stereotool_unit()
+                unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-stereotool-active.service"
+                if not unit_path.exists():
+                    QMessageBox.information(self, "Stereo Tool Not Configured",
+                                            "No active Stereo Tool instance is set.\n\n"
+                                            "Open the 'Stereo Tool Manager' tab to add and activate one.")
+                    return
+                subprocess.run(["systemctl", "--user", "restart", "rdx-stereotool-active", "--no-block"], check=False)
+                QMessageBox.information(self, "Stereo Tool Restart Requested", "Stereo Tool user service restarting.")
 
             else:
                 # For other services, use systemctl
@@ -5190,7 +5165,22 @@ verify
             unit_dir = Path.home() / ".config" / "systemd" / "user"
             unit_dir.mkdir(parents=True, exist_ok=True)
             unit_path = unit_dir / "rdx-stereotool-active.service"
-            # Minimal ExecStart; Stereo Tool JACK GUI typically self-manages JACK ports
+            # Minimal ExecStart with readiness gates; Stereo Tool JACK GUI typically self-manages JACK ports
+            # Prefer installed JACK readiness helper if present
+            jack_wait = "/usr/local/bin/jack-wait-ready.sh"
+            has_jack_wait = os.path.isfile(jack_wait) and os.access(jack_wait, os.X_OK)
+            pre_jack = f"ExecStartPre={jack_wait} 30\n" if has_jack_wait else ""
+            # Encoder wait: prefer dedicated helper if installed; else fallback to inline grep loop (soft)
+            enc_wait = "/usr/local/bin/encoder-wait-ready.sh"
+            has_enc_wait = os.path.isfile(enc_wait) and os.access(enc_wait, os.X_OK)
+            if has_enc_wait:
+                pre_enc = f"ExecStartPre={enc_wait} --timeout 30\n"
+            else:
+                pre_enc = (
+                    "ExecStartPre=/bin/bash -lc 'for i in $(seq 1 60); do "
+                    "jack_lsp -p 2>/dev/null | grep -qiE \"^(liquidsoap|darkice|butt|glasscoder)[:]\" && exit 0; "
+                    "sleep 0.5; done; echo \"[rdx] encoder not detected within 30s (continuing)\" >&2; exit 0'\n"
+                )
             unit = f"""[Unit]
 Description=RDX Stereo Tool (active instance)
 After=default.target
@@ -5198,7 +5188,7 @@ Wants=default.target
 
 [Service]
 Type=simple
-ExecStart={str(active)}
+{pre_jack}{pre_enc}ExecStart={str(active)}
 Restart=on-failure
 RestartSec=2
 
