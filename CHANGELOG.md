@@ -1,3 +1,13 @@
+## v3.6.4 (2025-10-25)
+### Reliability
+- QJackCtl-style JACK detection: fast probe via python-jack-client (no_start_server), with fallbacks to jack_control (dbus) and jackd process checks. Longer jack_lsp timeouts reduce false negatives when Rivendell manages jackd.
+
+### UI
+- Graph and Patchboard now tolerate transient jack_lsp failures when the server is up, avoiding spurious "JACK is not running" states.
+
+### Packaging
+- Patch bump to publish improved detection.
+
 ## v3.6.3 (2025-10-25)
 ### Fixed
 - Graph/Profile crash: use QBrush(Qt.NoBrush) for invisible edge hit-areas to avoid `setBrush(...): unexpected type 'BrushStyle'` on some PyQt5 builds.

@@ -27,6 +27,10 @@ from PyQt5.QtGui import QFont, QIcon, QPalette, QPen, QColor, QPainter, QPainter
 import urllib.request
 import shutil
 import shlex
+try:
+    import jack as _pyjack  # Optional: python-jack-client for QJackCtl-style probing
+except Exception:
+    _pyjack = None
 
 class StreamBuilderTab(QWidget):
     """Tab 1: Stream Builder - Create and manage streaming configurations"""
@@ -1099,21 +1103,49 @@ class JackMatrixTab(QWidget):
     def refresh_jack_connections(self):
         """Refresh JACK ports and update UI elements."""
         try:
+            # Fast, QJackCtl-style probe: try opening a client without starting the server
+            def _fast_probe() -> bool:
+                # 1) python-jack-client if available (no_start_server)
+                if _pyjack is not None:
+                    try:
+                        c = _pyjack.Client("rdx-probe", no_start_server=True)
+                        try:
+                            c.close()
+                        except Exception:
+                            pass
+                        return True
+                    except Exception:
+                        pass
+                # 2) jack_control reports started (jackdbus)
+                try:
+                    jc = subprocess.run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"],
+                                        capture_output=True, text=True, timeout=1.2)
+                    if "started" in (jc.stdout or "").lower():
+                        return True
+                except Exception:
+                    pass
+                # 3) Rivendell-managed jackd without dbus: detect jackd process
+                try:
+                    pg = subprocess.run(["pgrep", "-x", "jackd"], capture_output=True, text=True, timeout=0.6)
+                    if pg.returncode == 0:
+                        return True
+                except Exception:
+                    pass
+                return False
+
             # Check if JACK is running
             try:
                 # First, a fast probe
-                base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=0.8)
+                base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=1.2)
             except subprocess.TimeoutExpired:
                 # Retry with a longer timeout before giving up (VMs/xRDP can be slower)
                 try:
                     base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=3.5)
                 except subprocess.TimeoutExpired:
-                    # As a last resort, if jackdbus says 'started', treat JACK as present
-                    jc = subprocess.run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"],
-                                        capture_output=True, text=True, timeout=1.5)
-                    if "started" in (jc.stdout or "").lower():
+                    # As a last resort, consider JACK present if fast probe succeeds
+                    if _fast_probe():
                         base = subprocess.CompletedProcess(args=["jack_lsp"], returncode=0, stdout="", stderr="")
-                        self.jack_status_label.setText("Status: ✅ JACK Running (dbus)")
+                        self.jack_status_label.setText("Status: ✅ JACK Running")
                         self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
                     else:
                         self.jack_status_label.setText("Status: ⏳ JACK Probe Timed Out")
@@ -1121,11 +1153,9 @@ class JackMatrixTab(QWidget):
                         # Do not hard-fail: preserve existing state and hint user to Refresh again
                         return
             if base.returncode != 0:
-                # If jack_control reports started, tolerate a transient non-zero from jack_lsp
-                jc = subprocess.run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"],
-                                    capture_output=True, text=True, timeout=1.0)
-                if "started" in (jc.stdout or "").lower():
-                    self.jack_status_label.setText("Status: ✅ JACK Running (dbus)")
+                # If fast probe says running, tolerate a transient non-zero from jack_lsp
+                if _fast_probe():
+                    self.jack_status_label.setText("Status: ✅ JACK Running")
                     self.jack_status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
                 else:
                     self.jack_status_label.setText("Status: ❌ JACK Not Running")
@@ -1138,7 +1168,7 @@ class JackMatrixTab(QWidget):
                     return
             # Ports with properties
             try:
-                res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True, timeout=2.5)
+                res = subprocess.run(["jack_lsp", "-p"], capture_output=True, text=True, timeout=3.0)
             except subprocess.TimeoutExpired:
                 res = subprocess.CompletedProcess(args=["jack_lsp","-p"], returncode=1, stdout=base.stdout, stderr="")
             out = res.stdout if res.returncode == 0 else base.stdout
@@ -2072,12 +2102,38 @@ class JackGraphTab(QWidget):
     def refresh(self):
         # Clear
         self.scene.clear()
-        # Probe JACK
-        base = self._run(["jack_lsp"], timeout=0.7)
+        # Probe JACK (QJackCtl-style fallback)
+        def _fast_probe() -> bool:
+            if _pyjack is not None:
+                try:
+                    c = _pyjack.Client("rdx-probe", no_start_server=True)
+                    try:
+                        c.close()
+                    except Exception:
+                        pass
+                    return True
+                except Exception:
+                    pass
+            try:
+                jc = self._run(["bash","-lc","command -v jack_control >/dev/null 2>&1 && jack_control status || true"], timeout=1.0)
+                if "started" in (jc.stdout or "").lower():
+                    return True
+            except Exception:
+                pass
+            try:
+                pg = self._run(["pgrep", "-x", "jackd"], timeout=0.6)
+                if getattr(pg, 'returncode', 1) == 0:
+                    return True
+            except Exception:
+                pass
+            return False
+
+        base = self._run(["jack_lsp"], timeout=1.2)
         if base.returncode != 0:
-            self.scene.addText("JACK is not running")
-            return
-        res = self._run(["jack_lsp", "-p"], timeout=0.9)
+            if not _fast_probe():
+                self.scene.addText("JACK is not running")
+                return
+        res = self._run(["jack_lsp", "-p"], timeout=3.0)
         out = res.stdout or base.stdout
         self.ports = self._parse_ports(out)
         self.connections = self._list_connections()
