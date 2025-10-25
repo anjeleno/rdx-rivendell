@@ -1,3 +1,16 @@
+## v3.5.6 (2025-10-24)
+### UI
+- Jack Graph: Added on-tab manual patch controls with new Output/Input selectors and Connect/Disconnect/Protect buttons so technicians can wire ports without leaving the graph view.
+- Jack Graph: Cable graphics are now shared across tabs, restoring the context-menu actions and preventing `_GraphEdgeItem` scope errors when generating profiles.
+- Service Control: Launch Order table now stretches to fill the panel, supports reliable row selection, and keeps alternating row colors for easier scanning.
+
+### Reliability
+- Service Control: Reordering rows rebuilds the table from persisted data, eliminating the crash triggered by repeated Move Up/Down actions.
+- Jack Graph: Manual combo boxes refresh after each JACK scan to keep the quick-connect list in sync with the live server.
+
+### Streaming
+- Liquidsoap config generator places the source argument correctly in each `output.icecast` block so Liquidsoap no longer aborts with a line 0 syntax error.
+
 ## v3.5.5 (2025-10-24)
 ### UI
 - Jack Graph: Cables now use dedicated graphics items with larger hit zones, so right-click menus (Stereo/Mono/L/R actions) appear reliably on every platform.

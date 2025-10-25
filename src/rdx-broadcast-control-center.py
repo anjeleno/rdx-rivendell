@@ -28,6 +28,83 @@ import urllib.request
 import shutil
 import shlex
 
+
+class _GraphEdgeItem(QGraphicsPathItem):
+    """Custom path item for graph edges with reliable context menu handling."""
+
+    def __init__(self, path: QPainterPath, owner, sp_full: str, dp_full: str):
+        super().__init__(path)
+        self._owner = owner
+        self._sp_full = sp_full
+        self._dp_full = dp_full
+        self.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        self.setAcceptHoverEvents(True)
+        try:
+            self.setData(99, "edge")
+            self.setData(100, sp_full)
+            self.setData(101, dp_full)
+        except Exception:
+            pass
+
+    def mousePressEvent(self, event):
+        try:
+            if event.button() == Qt.RightButton:
+                handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
+                if handled:
+                    event.accept()
+                    return
+        except Exception:
+            pass
+        super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event):
+        try:
+            handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
+            if handled:
+                event.accept()
+                return
+        except Exception:
+            pass
+        super().contextMenuEvent(event)
+
+
+class _GraphEdgeHitBox(QGraphicsPathItem):
+    """Transparent hit area over an edge to make right-clicking easier."""
+
+    def __init__(self, path: QPainterPath, owner, sp_full: str, dp_full: str):
+        super().__init__(path)
+        self._owner = owner
+        self._sp_full = sp_full
+        self._dp_full = dp_full
+        self.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
+        try:
+            self.setData(99, "edge")
+            self.setData(100, sp_full)
+            self.setData(101, dp_full)
+        except Exception:
+            pass
+
+    def mousePressEvent(self, event):
+        try:
+            if event.button() == Qt.RightButton:
+                handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
+                if handled:
+                    event.accept()
+                    return
+        except Exception:
+            pass
+        super().mousePressEvent(event)
+
+    def contextMenuEvent(self, event):
+        try:
+            handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
+            if handled:
+                event.accept()
+                return
+        except Exception:
+            pass
+        super().contextMenuEvent(event)
+
 class StreamBuilderTab(QWidget):
     """Tab 1: Stream Builder - Create and manage streaming configurations"""
     
@@ -309,7 +386,7 @@ output.icecast(
   genre="{stream.get('genre', 'Various')}",
   url="{mount_name}",
   name="{stream.get('station_name', 'RDX Station')}",
-  description="{stream.get('description', f'{stream["codec"]} stream at {stream["bitrate"]}')}",
+    description="{stream.get('description', f'{stream["codec"]} stream at {stream["bitrate"]}')}",
     radio
 )
 '''
@@ -1521,85 +1598,6 @@ class JackMatrixTab(QWidget):
         if lpn in ("out_2", "playback_2", "out_r", "right", "r", "out:right"):
             return "Right Out"
         return pn
-
-
-    class _GraphEdgeItem(QGraphicsPathItem):
-        """Custom path item for graph edges with reliable context menu handling."""
-
-        def __init__(self, path: QPainterPath, owner, sp_full: str, dp_full: str):
-            super().__init__(path)
-            self._owner = owner
-            self._sp_full = sp_full
-            self._dp_full = dp_full
-            self.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
-            self.setAcceptHoverEvents(True)
-            try:
-                self.setData(99, "edge")
-                self.setData(100, sp_full)
-                self.setData(101, dp_full)
-            except Exception:
-                pass
-
-        def mousePressEvent(self, event):
-            try:
-                if event.button() == Qt.RightButton:
-                    handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
-                    if handled:
-                        event.accept()
-                        return
-            except Exception:
-                pass
-            super().mousePressEvent(event)
-
-        def contextMenuEvent(self, event):
-            try:
-                handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
-                if handled:
-                    event.accept()
-                    return
-            except Exception:
-                pass
-            super().contextMenuEvent(event)
-
-
-    class _GraphEdgeHitBox(QGraphicsPathItem):
-        """Transparent hit area over an edge to make right-clicking easier."""
-
-        def __init__(self, path: QPainterPath, owner, sp_full: str, dp_full: str):
-            super().__init__(path)
-            self._owner = owner
-            self._sp_full = sp_full
-            self._dp_full = dp_full
-            self.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton)
-            try:
-                self.setData(99, "edge")
-                self.setData(100, sp_full)
-                self.setData(101, dp_full)
-            except Exception:
-                pass
-
-        def mousePressEvent(self, event):
-            try:
-                if event.button() == Qt.RightButton:
-                    handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
-                    if handled:
-                        event.accept()
-                        return
-            except Exception:
-                pass
-            super().mousePressEvent(event)
-
-        def contextMenuEvent(self, event):
-            try:
-                handled = self._owner._edge_context_menu(self._sp_full, self._dp_full, event.screenPos())
-                if handled:
-                    event.accept()
-                    return
-            except Exception:
-                pass
-            super().contextMenuEvent(event)
-
-
 class JackGraphTab(QWidget):
     """Visual JACK graph: clients/ports as nodes with connectable edges and lock/unlock.
     Preview version designed to complement the Patchboard.
@@ -1722,6 +1720,32 @@ class JackGraphTab(QWidget):
         prof.addWidget(btn_generate)
         prof.addStretch(1)
         root.addLayout(prof)
+
+    # Manual jack patch row for quick connections
+    manual = QHBoxLayout()
+    lbl_out = QLabel("Output port:")
+    self.manual_out = QComboBox()
+    self.manual_out.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+    lbl_in = QLabel("Input port:")
+    self.manual_in = QComboBox()
+    self.manual_in.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+    btn_manual_connect = QPushButton("🔌 Connect")
+    btn_manual_connect.clicked.connect(self.connect_manual_ports)
+    btn_manual_disconnect = QPushButton("♻️ Disconnect")
+    btn_manual_disconnect.clicked.connect(self.disconnect_manual_ports)
+    btn_manual_protect = QPushButton("🔒 Toggle Protect")
+    btn_manual_protect.clicked.connect(self.toggle_lock_manual_pair)
+    manual.addWidget(lbl_out)
+    manual.addWidget(self.manual_out)
+    manual.addSpacing(12)
+    manual.addWidget(lbl_in)
+    manual.addWidget(self.manual_in)
+    manual.addSpacing(12)
+    manual.addWidget(btn_manual_connect)
+    manual.addWidget(btn_manual_disconnect)
+    manual.addWidget(btn_manual_protect)
+    manual.addStretch(1)
+    root.addLayout(manual)
 
         root.addWidget(self.view)
     # ----- Persistence -----
@@ -2084,7 +2108,7 @@ class JackGraphTab(QWidget):
             if rect.isValid():
                 self.view.fitInView(rect, Qt.KeepAspectRatio)
             self._fit_pending = False
-        # No manual combos on the graph tab
+        self._populate_manual_combos()
 
     def _add_port_node(self, fullport: str, pos: QPointF, is_output: bool):
         r = 6
@@ -3495,12 +3519,22 @@ class ServiceControlTab(QWidget):
         layout.addWidget(master_group)
         
         # Launch Order & Timing controls
-        order_group = QGroupBox("🚦 Launch Order & Timing")
-        order_layout = QVBoxLayout(order_group)
-        self.order_table = QTableWidget(0, 3, order_group)
-        self.order_table.setHorizontalHeaderLabels(["Service", "Delay (s)", "Unit"])
-        self.order_table.horizontalHeader().setStretchLastSection(True)
-        order_layout.addWidget(self.order_table)
+    order_group = QGroupBox("🚦 Launch Order & Timing")
+    order_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    order_layout = QVBoxLayout(order_group)
+    self.order_table = QTableWidget(0, 3, order_group)
+    self.order_table.setHorizontalHeaderLabels(["Service", "Delay (s)", "Unit"])
+    self.order_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+    self.order_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+    self.order_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+    self.order_table.horizontalHeader().setStretchLastSection(False)
+    self.order_table.verticalHeader().setVisible(False)
+    self.order_table.setSelectionBehavior(QTableWidget.SelectRows)
+    self.order_table.setSelectionMode(QTableWidget.SingleSelection)
+    self.order_table.setAlternatingRowColors(True)
+    self.order_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    self.order_table.setMinimumHeight(220)
+    order_layout.addWidget(self.order_table)
 
         order_buttons = QHBoxLayout()
         btn_up = QPushButton("⬆️ Move Up")
@@ -3513,7 +3547,7 @@ class ServiceControlTab(QWidget):
         order_buttons.addWidget(btn_save)
         order_buttons.addWidget(btn_start)
         order_layout.addLayout(order_buttons)
-        layout.addWidget(order_group)
+    layout.addWidget(order_group)
 
         self._init_launch_order_ui()
 
@@ -3521,24 +3555,6 @@ class ServiceControlTab(QWidget):
         btn_down.clicked.connect(lambda: self._move_selected_order_row(1))
         btn_save.clicked.connect(self._save_launch_order)
         btn_start.clicked.connect(self._start_services_in_order)
-
-        # Service Dependencies Info
-        deps_group = QGroupBox("📊 Service Dependencies")
-        deps_layout = QVBoxLayout(deps_group)
-        
-        deps_text = QLabel("""
-🔗 Service Startup Order:
-1. JACK Audio (Foundation)
-2. Liquidsoap (Stream Generation)
-3. Stereo Tool (Audio Processing)
-4. Icecast (Stream Server)
-
-⚠️ Dependencies: Each service depends on the previous one running correctly.
-        """)
-        deps_text.setStyleSheet("QLabel { background-color: #f8f9fa; padding: 10px; border-radius: 5px; }")
-        deps_layout.addWidget(deps_text)
-        
-        layout.addWidget(deps_group)
         
         # Liquidsoap Log Viewer
         log_group = QGroupBox("📄 Liquidsoap Log (latest 500 lines)")
@@ -5011,45 +5027,80 @@ verify
                         delays[key] = int(value)
                     except Exception:
                         continue
-            self.order_table.setRowCount(0)
-            from PyQt5.QtWidgets import QSpinBox
+            rows = []
             for key in order:
                 info = self.services.get(key)
                 if not info:
                     continue
-                row = self.order_table.rowCount()
-                self.order_table.insertRow(row)
-                self.order_table.setItem(row, 0, QTableWidgetItem(info['name']))
-                spin = QSpinBox()
-                spin.setRange(0, 60)
-                spin.setValue(int(delays.get(key, 2)))
-                spin.setProperty('service_key', key)
-                self.order_table.setCellWidget(row, 1, spin)
-                self.order_table.setItem(row, 2, QTableWidgetItem(info.get('systemd', '')))
+                rows.append({
+                    "key": key,
+                    "name": info['name'],
+                    "delay": int(delays.get(key, 2)),
+                    "unit": info.get('systemd', '')
+                })
+            self._apply_launch_rows(rows)
         except Exception:
             pass
 
-    def _swap_order_rows(self, a: int, b: int):
+    def _service_key_from_name(self, name: str) -> str:
+        for key, info in self.services.items():
+            if info.get('name') == name:
+                return key
+        return ""
+
+    def _collect_launch_rows(self) -> list:
+        rows = []
+        if not hasattr(self, 'order_table'):
+            return rows
+        try:
+            from PyQt5.QtWidgets import QSpinBox
+            for row in range(self.order_table.rowCount()):
+                name_item = self.order_table.item(row, 0)
+                if not name_item:
+                    continue
+                key = name_item.data(Qt.UserRole) or self._service_key_from_name(name_item.text())
+                if not key:
+                    continue
+                unit_item = self.order_table.item(row, 2)
+                spin = self.order_table.cellWidget(row, 1)
+                delay = int(spin.value()) if isinstance(spin, QSpinBox) else 0
+                rows.append({
+                    "key": key,
+                    "name": name_item.text(),
+                    "delay": delay,
+                    "unit": unit_item.text() if unit_item else ""
+                })
+        except Exception:
+            pass
+        return rows
+
+    def _apply_launch_rows(self, rows: list):
         if not hasattr(self, 'order_table'):
             return
         try:
-            if not (0 <= a < self.order_table.rowCount()) or not (0 <= b < self.order_table.rowCount()):
-                return
-            if a == b:
-                return
-            for col in (0, 1, 2):
-                if col == 1:
-                    wa = self.order_table.cellWidget(a, col)
-                    wb = self.order_table.cellWidget(b, col)
-                    self.order_table.removeCellWidget(a, col)
-                    self.order_table.removeCellWidget(b, col)
-                    self.order_table.setCellWidget(a, col, wb)
-                    self.order_table.setCellWidget(b, col, wa)
-                else:
-                    ia = self.order_table.takeItem(a, col)
-                    ib = self.order_table.takeItem(b, col)
-                    self.order_table.setItem(a, col, ib)
-                    self.order_table.setItem(b, col, ia)
+            from PyQt5.QtWidgets import QSpinBox
+            self.order_table.setRowCount(0)
+            for data in rows:
+                row = self.order_table.rowCount()
+                self.order_table.insertRow(row)
+
+                name_item = QTableWidgetItem(data.get('name', ''))
+                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+                if data.get('key'):
+                    name_item.setData(Qt.UserRole, data.get('key'))
+                self.order_table.setItem(row, 0, name_item)
+
+                spin = QSpinBox()
+                spin.setRange(0, 60)
+                spin.setValue(int(data.get('delay', 2)))
+                spin.setProperty('service_key', data.get('key'))
+                self.order_table.setCellWidget(row, 1, spin)
+
+                unit_item = QTableWidgetItem(data.get('unit', ''))
+                unit_item.setFlags(unit_item.flags() & ~Qt.ItemIsEditable)
+                if data.get('key'):
+                    unit_item.setData(Qt.UserRole, data.get('key'))
+                self.order_table.setItem(row, 2, unit_item)
         except Exception:
             pass
 
@@ -5063,7 +5114,14 @@ verify
             target = current + int(direction)
             if not (0 <= target < self.order_table.rowCount()):
                 return
-            self._swap_order_rows(current, target)
+            rows = self._collect_launch_rows()
+            if len(rows) < 2:
+                return
+            if not (0 <= current < len(rows)) or not (0 <= target < len(rows)):
+                return
+            row_data = rows.pop(current)
+            rows.insert(target, row_data)
+            self._apply_launch_rows(rows)
             self.order_table.selectRow(target)
         except Exception:
             pass
@@ -5072,24 +5130,14 @@ verify
         if not hasattr(self, 'order_table'):
             return
         try:
-            from PyQt5.QtWidgets import QSpinBox
             order = []
             delays = {}
-            for row in range(self.order_table.rowCount()):
-                name_item = self.order_table.item(row, 0)
-                spin = self.order_table.cellWidget(row, 1)
-                if not name_item:
-                    continue
-                key = None
-                for svc_key, info in self.services.items():
-                    if info['name'] == name_item.text():
-                        key = svc_key
-                        break
+            for row_data in self._collect_launch_rows():
+                key = row_data.get('key')
                 if not key:
                     continue
                 order.append(key)
-                if isinstance(spin, QSpinBox):
-                    delays[key] = int(spin.value())
+                delays[key] = int(row_data.get('delay', 0))
             if self.main and hasattr(self.main, '_settings'):
                 self.main._settings['service_launch_order'] = order
                 self.main._settings['service_delays'] = delays
@@ -5102,23 +5150,8 @@ verify
         if not hasattr(self, 'order_table'):
             return
         try:
-            from PyQt5.QtWidgets import QSpinBox
-            sequence = []
-            for row in range(self.order_table.rowCount()):
-                name_item = self.order_table.item(row, 0)
-                spin = self.order_table.cellWidget(row, 1)
-                if not name_item:
-                    continue
-                key = None
-                for svc_key, info in self.services.items():
-                    if info['name'] == name_item.text():
-                        key = svc_key
-                        break
-                if not key:
-                    continue
-                delay = int(spin.value()) if isinstance(spin, QSpinBox) else 0
-                sequence.append((key, delay))
-
+            rows = self._collect_launch_rows()
+            sequence = [(row['key'], int(row.get('delay', 0))) for row in rows if row.get('key')]
             if not sequence:
                 QMessageBox.information(self, "Start In Order", "No services to start.")
                 return
