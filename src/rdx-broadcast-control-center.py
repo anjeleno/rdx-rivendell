@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.5.2
+RDX Professional Broadcast Control Center v3.6.0
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -962,7 +962,7 @@ class JackMatrixTab(QWidget):
         self._load_protected_pairs()
         self.setup_ui()
 
-    # ---- Persistence for protected pairs (Matrix) ----
+        # ---- Persistence for protected pairs (Matrix) ----
     def _config_dir(self) -> Path:
         p = Path.home() / ".config" / "rdx"
         try:
@@ -1094,7 +1094,7 @@ class JackMatrixTab(QWidget):
         self.refresh_jack_connections()
         # Note: auto-reconnect watcher lives on the Graph tab (user-facing control)
 
-    # ---- JACK helpers (Matrix) ----
+        # ---- JACK helpers (Matrix) ----
     def refresh_jack_connections(self):
         """Refresh JACK ports and update UI elements."""
         try:
@@ -1376,7 +1376,7 @@ class JackMatrixTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "JACK Error", f"Could not enumerate connections: {e}")
 
-    # ---- Low-level JACK ops (Matrix) ----
+        # ---- Low-level JACK ops (Matrix) ----
     def _jack_connect(self, src_port: str, dst_port: str):
         try:
             res = subprocess.run(["jack_connect", src_port, dst_port], capture_output=True, text=True)
@@ -1496,7 +1496,7 @@ class JackMatrixTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "JACK Error", str(e))
 
-    # ---- Pretty naming helpers (Matrix) ----
+        # ---- Pretty naming helpers (Matrix) ----
     def _pretty_client(self, name: str) -> str:
         ln = (name or '').lower()
         if ln.startswith('system'):
@@ -1583,7 +1583,7 @@ class JackGraphTab(QWidget):
     def __init__(self, main=None):
         super().__init__()
         self.main = main
-    self.scene = GraphScene(self)
+        self.scene = GraphScene(self)
         self.view = QGraphicsView(self.scene, self)
         try:
             self.view.setRenderHints(self.view.renderHints() | QPainter.Antialiasing | QPainter.TextAntialiasing | QPainter.SmoothPixmapTransform)
@@ -3455,7 +3455,7 @@ class ServiceControlTab(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-    # Individual Service Controls
+        # Individual Service Controls
         services_group = QGroupBox("🛠️ Individual Service Controls")
         services_layout = QGridLayout(services_group)
         
@@ -4024,7 +4024,7 @@ WantedBy=default.target
             pass
         return "—"
 
-    # ---- Liquidsoap path/env helpers ------------------------------------
+        # ---- Liquidsoap path/env helpers ------------------------------------
     def _liquidsoap_bin(self) -> str:
         """Prefer the per-user OPAM shim at ~/.local/bin/liquidsoap if present.
         Fallback to whichever 'liquidsoap' is on PATH.
@@ -4704,7 +4704,7 @@ verify
             except Exception:
                 return match.group(0)
             return f"{val}000"
-        # Handle quoted "64k"
+            # Handle quoted "64k"
         new = re.sub(r'audio_bitrate\s*=\s*"(\d+)k"', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
         # Handle unquoted 64k
         new = re.sub(r'audio_bitrate\s*=\s*(\d+)k\b', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
@@ -5021,7 +5021,7 @@ verify
         except Exception as e:
             QMessageBox.critical(self, "Logs Error", f"Could not open logs: {e}")
 
-    # ---- Stereo Tool helpers (systemd user unit and active symlink) ----
+        # ---- Stereo Tool helpers (systemd user unit and active symlink) ----
     def _st_path_root(self) -> Path:
         return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
 
@@ -5339,7 +5339,7 @@ class StereoToolManagerTab(QWidget):
         m = re.search(r"([0-9]{3,4,5})", name)
         return m.group(1) if m else ""
 
-    # ---- Persist 'latest' URL in settings.json ----
+        # ---- Persist 'latest' URL in settings.json ----
     def _settings_path(self) -> Path:
         p = Path.home() / ".config" / "rdx"
         try:
@@ -5661,7 +5661,7 @@ WantedBy=default.target
         except Exception:
             pass
 
-    # ---- Launch order helpers ----
+        # ---- Launch order helpers ----
     def _init_launch_order_ui(self):
         try:
             # Default order
@@ -5781,7 +5781,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.5.2")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.6.0")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -5849,9 +5849,9 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.5.2")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.6.0")
 
-    # ---- System tray ----
+        # ---- System tray ----
     def _setup_tray(self):
         try:
             self.tray = QSystemTrayIcon(self)
@@ -5895,7 +5895,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         else:
             super().closeEvent(event)
 
-    # ---- Settings persistence ----
+        # ---- Settings persistence ----
     def _config_dir(self) -> Path:
         p = Path.home() / ".config" / "rdx"
         try:
