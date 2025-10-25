@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.5.5
+RDX Professional Broadcast Control Center v3.5.6
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1039,7 +1039,7 @@ class JackMatrixTab(QWidget):
         self._load_protected_pairs()
         self.setup_ui()
 
-    # ---- Persistence for protected pairs (Matrix) ----
+        # ---- Persistence for protected pairs (Matrix) ----
     def _config_dir(self) -> Path:
         p = Path.home() / ".config" / "rdx"
         try:
@@ -1171,7 +1171,7 @@ class JackMatrixTab(QWidget):
         self.refresh_jack_connections()
         # Note: auto-reconnect watcher lives on the Graph tab (user-facing control)
 
-    # ---- JACK helpers (Matrix) ----
+        # ---- JACK helpers (Matrix) ----
     def refresh_jack_connections(self):
         """Refresh JACK ports and update UI elements."""
         try:
@@ -1453,7 +1453,7 @@ class JackMatrixTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "JACK Error", f"Could not enumerate connections: {e}")
 
-    # ---- Low-level JACK ops (Matrix) ----
+        # ---- Low-level JACK ops (Matrix) ----
     def _jack_connect(self, src_port: str, dst_port: str):
         try:
             res = subprocess.run(["jack_connect", src_port, dst_port], capture_output=True, text=True)
@@ -1573,7 +1573,7 @@ class JackMatrixTab(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "JACK Error", str(e))
 
-    # ---- Pretty naming helpers (Matrix) ----
+        # ---- Pretty naming helpers (Matrix) ----
     def _pretty_client(self, name: str) -> str:
         ln = (name or '').lower()
         if ln.startswith('system'):
@@ -1721,31 +1721,31 @@ class JackGraphTab(QWidget):
         prof.addStretch(1)
         root.addLayout(prof)
 
-    # Manual jack patch row for quick connections
-    manual = QHBoxLayout()
-    lbl_out = QLabel("Output port:")
-    self.manual_out = QComboBox()
-    self.manual_out.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-    lbl_in = QLabel("Input port:")
-    self.manual_in = QComboBox()
-    self.manual_in.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-    btn_manual_connect = QPushButton("🔌 Connect")
-    btn_manual_connect.clicked.connect(self.connect_manual_ports)
-    btn_manual_disconnect = QPushButton("♻️ Disconnect")
-    btn_manual_disconnect.clicked.connect(self.disconnect_manual_ports)
-    btn_manual_protect = QPushButton("🔒 Toggle Protect")
-    btn_manual_protect.clicked.connect(self.toggle_lock_manual_pair)
-    manual.addWidget(lbl_out)
-    manual.addWidget(self.manual_out)
-    manual.addSpacing(12)
-    manual.addWidget(lbl_in)
-    manual.addWidget(self.manual_in)
-    manual.addSpacing(12)
-    manual.addWidget(btn_manual_connect)
-    manual.addWidget(btn_manual_disconnect)
-    manual.addWidget(btn_manual_protect)
-    manual.addStretch(1)
-    root.addLayout(manual)
+        # Manual jack patch row for quick connections
+        manual = QHBoxLayout()
+        lbl_out = QLabel("Output port:")
+        self.manual_out = QComboBox()
+        self.manual_out.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        lbl_in = QLabel("Input port:")
+        self.manual_in = QComboBox()
+        self.manual_in.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        btn_manual_connect = QPushButton("🔌 Connect")
+        btn_manual_connect.clicked.connect(self.connect_manual_ports)
+        btn_manual_disconnect = QPushButton("♻️ Disconnect")
+        btn_manual_disconnect.clicked.connect(self.disconnect_manual_ports)
+        btn_manual_protect = QPushButton("🔒 Toggle Protect")
+        btn_manual_protect.clicked.connect(self.toggle_lock_manual_pair)
+        manual.addWidget(lbl_out)
+        manual.addWidget(self.manual_out)
+        manual.addSpacing(12)
+        manual.addWidget(lbl_in)
+        manual.addWidget(self.manual_in)
+        manual.addSpacing(12)
+        manual.addWidget(btn_manual_connect)
+        manual.addWidget(btn_manual_disconnect)
+        manual.addWidget(btn_manual_protect)
+        manual.addStretch(1)
+        root.addLayout(manual)
 
         root.addWidget(self.view)
     # ----- Persistence -----
@@ -3423,7 +3423,7 @@ class ServiceControlTab(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-    # Individual Service Controls
+        # Individual Service Controls
         services_group = QGroupBox("🛠️ Individual Service Controls")
         services_layout = QGridLayout(services_group)
         
@@ -3519,22 +3519,22 @@ class ServiceControlTab(QWidget):
         layout.addWidget(master_group)
         
         # Launch Order & Timing controls
-    order_group = QGroupBox("🚦 Launch Order & Timing")
-    order_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-    order_layout = QVBoxLayout(order_group)
-    self.order_table = QTableWidget(0, 3, order_group)
-    self.order_table.setHorizontalHeaderLabels(["Service", "Delay (s)", "Unit"])
-    self.order_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-    self.order_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-    self.order_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-    self.order_table.horizontalHeader().setStretchLastSection(False)
-    self.order_table.verticalHeader().setVisible(False)
-    self.order_table.setSelectionBehavior(QTableWidget.SelectRows)
-    self.order_table.setSelectionMode(QTableWidget.SingleSelection)
-    self.order_table.setAlternatingRowColors(True)
-    self.order_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-    self.order_table.setMinimumHeight(220)
-    order_layout.addWidget(self.order_table)
+        order_group = QGroupBox("🚦 Launch Order & Timing")
+        order_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        order_layout = QVBoxLayout(order_group)
+        self.order_table = QTableWidget(0, 3, order_group)
+        self.order_table.setHorizontalHeaderLabels(["Service", "Delay (s)", "Unit"])
+        self.order_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.order_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.order_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.order_table.horizontalHeader().setStretchLastSection(False)
+        self.order_table.verticalHeader().setVisible(False)
+        self.order_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.order_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.order_table.setAlternatingRowColors(True)
+        self.order_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.order_table.setMinimumHeight(220)
+        order_layout.addWidget(self.order_table)
 
         order_buttons = QHBoxLayout()
         btn_up = QPushButton("⬆️ Move Up")
@@ -3547,7 +3547,7 @@ class ServiceControlTab(QWidget):
         order_buttons.addWidget(btn_save)
         order_buttons.addWidget(btn_start)
         order_layout.addLayout(order_buttons)
-    layout.addWidget(order_group)
+        layout.addWidget(order_group)
 
         self._init_launch_order_ui()
 
@@ -4012,7 +4012,7 @@ WantedBy=default.target
             pass
         return "—"
 
-    # ---- Liquidsoap path/env helpers ------------------------------------
+        # ---- Liquidsoap path/env helpers ------------------------------------
     def _liquidsoap_bin(self) -> str:
         """Prefer the per-user OPAM shim at ~/.local/bin/liquidsoap if present.
         Fallback to whichever 'liquidsoap' is on PATH.
@@ -4692,7 +4692,7 @@ verify
             except Exception:
                 return match.group(0)
             return f"{val}000"
-        # Handle quoted "64k"
+            # Handle quoted "64k"
         new = re.sub(r'audio_bitrate\s*=\s*"(\d+)k"', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
         # Handle unquoted 64k
         new = re.sub(r'audio_bitrate\s*=\s*(\d+)k\b', lambda m: f'audio_bitrate={kb_to_bps(m)}', new)
@@ -5009,7 +5009,7 @@ verify
         except Exception as e:
             QMessageBox.critical(self, "Logs Error", f"Could not open logs: {e}")
 
-    # ---- Launch order helpers ----
+        # ---- Launch order helpers ----
     def _init_launch_order_ui(self):
         if not hasattr(self, 'order_table'):
             return
@@ -5175,7 +5175,7 @@ verify
         except Exception:
             pass
 
-    # ---- Stereo Tool helpers (systemd user unit and active symlink) ----
+        # ---- Stereo Tool helpers (systemd user unit and active symlink) ----
     def _st_path_root(self) -> Path:
         return Path.home() / ".config" / "rdx" / "processing" / "stereotool"
 
@@ -5493,7 +5493,7 @@ class StereoToolManagerTab(QWidget):
         m = re.search(r"([0-9]{3,4,5})", name)
         return m.group(1) if m else ""
 
-    # ---- Persist 'latest' URL in settings.json ----
+        # ---- Persist 'latest' URL in settings.json ----
     def _settings_path(self) -> Path:
         p = Path.home() / ".config" / "rdx"
         try:
@@ -5680,7 +5680,7 @@ class SettingsTab(QWidget):
 
         layout.addStretch(1)
 
-    # ---- Autostart helpers ----
+        # ---- Autostart helpers ----
     def unit_path(self) -> Path:
         return Path.home() / ".config" / "systemd" / "user" / "rdx-control-center.service"
 
@@ -5778,7 +5778,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.5.5")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.5.6")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -5846,9 +5846,9 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.5.5")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.5.6")
 
-    # ---- System tray ----
+        # ---- System tray ----
     def _setup_tray(self):
         try:
             self.tray = QSystemTrayIcon(self)
@@ -5892,7 +5892,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         else:
             super().closeEvent(event)
 
-    # ---- Settings persistence ----
+        # ---- Settings persistence ----
     def _config_dir(self) -> Path:
         p = Path.home() / ".config" / "rdx"
         try:
