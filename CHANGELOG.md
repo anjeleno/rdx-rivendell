@@ -1,3 +1,15 @@
+## v3.7.4 (2025-10-26)
+### Fixed
+- Liquidsoap 2.x compatibility: `getenv` now called with a default value in generated configs to avoid “Missing arguments in function application: string.”
+  - Generator sets `set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")`.
+  - Sanitizers auto-rewrite existing configs from `getenv("HOME")` → `getenv("HOME", "")`.
+
+### Installer
+- Updated installer template `rivendell-installer/APPS/radio.liq` to use the two-arg `getenv` so fresh installs parse cleanly.
+
+### Notes
+- If you already generated `~/.config/rdx/radio.liq` on 3.7.3, simply starting Liquidsoap from RDX will apply the sanitizer and fix the line automatically.
+
 ## v3.7.3 (2025-10-26)
 ### Fixed
 - Liquidsoap config parse-check would fail with “Error 3: Syntax error!” at line 1 if the config began with a shebang. The app now strips a leading shebang during sanitize passes before parse-checking/starting.

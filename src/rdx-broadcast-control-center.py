@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.3
+RDX Professional Broadcast Control Center v3.7.4
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -282,7 +282,7 @@ class StreamBuilderTab(QWidget):
         config = '''#!/usr/bin/liquidsoap
 
 # Log to user config directory so the in-app log viewer can read it
-set("log.file.path", getenv("HOME") ^ "/.config/rdx/liquidsoap.log")
+set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")
 
 # Set sample rate to 48kHz
 set("frame.audio.samplerate", 48000)
@@ -4901,6 +4901,8 @@ verify
         # Remove shebang if present; Liquidsoap parse-check (-c) treats it as a syntax error
         if new.startswith("#!/"):
             new = re.sub(r'^#!.*\n', '', new, count=1)
+        # Fix getenv signature for Liquidsoap 2.x: require default argument
+        new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
@@ -4929,6 +4931,8 @@ verify
         # Remove shebang if present; ensure file is parseable by liquidsoap -c
         if new.startswith("#!/"):
             new = re.sub(r'^#!.*\n', '', new, count=1)
+        # Fix getenv signature for Liquidsoap 2.x
+        new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
         # Replace quoted or unquoted Nxk with integer Nx000 (approximate kbps to bps)
@@ -6084,7 +6088,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.3")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.4")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6152,7 +6156,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.3")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.4")
 
         # ---- System tray ----
     def _setup_tray(self):
