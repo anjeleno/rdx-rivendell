@@ -4473,6 +4473,15 @@ WantedBy=default.target
                 except Exception:
                     pass
 
+                # Always run a light sanitizer before parse-check.
+                # Rationale: literal "HOME/..." in log.file.path is syntactically valid, so -c succeeds
+                # but then Liquidsoap fails at runtime with: Log directory "HOME/.config/rdx" does not exist.
+                # Sanitizing preemptively fixes this without relying on a parse error.
+                try:
+                    self.sanitize_liquidsoap_config(config_file)
+                except Exception:
+                    pass
+
                 # Ensure config has file logging configured for Liquidsoap 2.x
                 try:
                     if config_file.exists():
@@ -4697,6 +4706,12 @@ WantedBy=default.target
                                                      "No AAC encoder is available (fdkaac or ffmpeg).\n\n"
                                                      "Options: Use MP3-only streams for now, or install Liquidsoap via OPAM for AAC support.")
                                 return
+                except Exception:
+                    pass
+
+                # Pre-sanitize before parse-check for the same reason as Start: fix runtime-only issues like literal HOME paths
+                try:
+                    self.sanitize_liquidsoap_config(config_file)
                 except Exception:
                     pass
 
@@ -4980,10 +4995,10 @@ verify
         #   set("log.file.path", "HOME/.config/rdx/")
         #   set("log.file.path", "HOME/.config/rdx/liquidsoap.log")
         # We normalize to a file path at ~/.config/rdx/liquidsoap.log
-        new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
+        new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Also fix v2-style assignment: log.file.path := "HOME/..."
-        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*"HOME(?:/[^"\)]*)?"\s*$',
+        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when we set a file path
         if 'log.file.path' in new and 'set("log.file"' not in new:
@@ -5025,10 +5040,10 @@ verify
         # Fix getenv signature for Liquidsoap 2.x
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
         # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
-        new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
+        new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Also fix v2-style assignment: log.file.path := "HOME/..."
-        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*"HOME(?:/[^"\)]*)?"\s*$',
+        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when a file path is set
         if 'log.file.path' in new and 'set("log.file"' not in new:

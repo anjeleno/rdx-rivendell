@@ -393,7 +393,8 @@ cat > "$PACKAGE_DIR/etc/skel/.config/rdx/radio.liq.example" << 'EOF'
 # RDX Generated Liquidsoap Configuration
 # Edit this file through RDX Broadcast Control Center
 
-set("log.file.path", "/tmp/soap.log")
+set("log.file", true)
+set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")
 set("frame.audio.samplerate", 48000)
 set("icy.metadata", true)
 

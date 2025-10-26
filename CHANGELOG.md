@@ -1,3 +1,9 @@
+## v3.7.10 (2025-10-26)
+### Fixed
+- Patch bump to publish latest Liquidsoap HOME-path and JACK-wait hardening across environments. No functional code changes beyond v3.7.9; consolidates notes and ensures availability via package feeds.
+- Liquidsoap: always run the light config sanitizer before parse-check/start. This ensures a literal `"HOME/..."` in `log.file.path` gets rewritten even when it parses fine (previously it failed only at runtime on 24.04).
+- Broadened HOME sanitizer to match single-quoted forms for both `set("log.file.path", ...)` and `log.file.path := ...`.
+
 ## v3.7.9 (2025-10-26)
 ### Fixed
 - Liquidsoap log path sanitizer now also rewrites v2-style assignments like `log.file.path := "HOME/..."` to the canonical `getenv("HOME", "")` form and ensures file logging is enabled.
