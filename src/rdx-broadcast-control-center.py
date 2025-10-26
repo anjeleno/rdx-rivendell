@@ -4982,12 +4982,17 @@ verify
         # We normalize to a file path at ~/.config/rdx/liquidsoap.log
         new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
+        # Also fix v2-style assignment: log.file.path := "HOME/..."
+        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*"HOME(?:/[^"\)]*)?"\s*$',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when we set a file path
         if 'log.file.path' in new and 'set("log.file"' not in new:
             # Insert right after the log.file.path line when possible
             new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
             if 'set("log.file"' not in new:
                 new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
+        # If v2-style 'log.file := false' exists, flip to true
+        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*false\s*$', 'set("log.file", true)', new)
 
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
@@ -5022,11 +5027,16 @@ verify
         # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
         new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
+        # Also fix v2-style assignment: log.file.path := "HOME/..."
+        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*"HOME(?:/[^"\)]*)?"\s*$',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when a file path is set
         if 'log.file.path' in new and 'set("log.file"' not in new:
             new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
             if 'set("log.file"' not in new:
                 new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
+        # Normalize v2-style "log.file := false" to enable file logging
+        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*false\s*$', 'set("log.file", true)', new)
 
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
@@ -5442,19 +5452,17 @@ WantedBy=default.target
             # Where to append stdout/stderr as a safety-net for visibility
             log_path = str(Path.home() / ".config" / "rdx" / "liquidsoap.log")
 
-            # Build ExecStartPre chain:
-            # 1) Ensure config dir and log file exist (so GUI tailer has a file even on early failure)
-            # 2) Wait for JACK to be ready. Use helper if present; otherwise inline bash loop as a fallback.
-            pre_lines = []
-            pre_lines.append(f"ExecStartPre=/usr/bin/env bash -lc \"mkdir -p {shlex.quote(str(cfg_dir))} && touch {shlex.quote(log_path)}\"")
-            if has_jack_wait:
-                pre_lines.append(f"ExecStartPre=/usr/bin/env bash -lc \"{jack_wait} --timeout 30\"")
-            else:
-                # Inline fallback: wait up to 30s for jack_lsp and at least one port
-                pre_lines.append(
-                    "ExecStartPre=/usr/bin/env bash -lc \"for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1\""
-                )
-            pre = "\n".join(pre_lines) + "\n"
+            # Build ExecStartPre with robust fallback: try helper if present, else inline loop
+            pre_cmd = (
+                f"mkdir -p {shlex.quote(str(cfg_dir))} && "
+                f"touch {shlex.quote(log_path)} && "
+                "if [ -x /usr/local/bin/jack-wait-ready.sh ]; then "
+                "/usr/local/bin/jack-wait-ready.sh --timeout 30; "
+                "else "
+                "for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1; "
+                "fi"
+            )
+            pre = f"ExecStartPre=/usr/bin/env bash -lc \"{pre_cmd}\"\n"
             unit = f"""[Unit]
 Description=RDX Liquidsoap (per-user)
 After=default.target

@@ -1,3 +1,11 @@
+## v3.7.9 (2025-10-26)
+### Fixed
+- Liquidsoap log path sanitizer now also rewrites v2-style assignments like `log.file.path := "HOME/..."` to the canonical `getenv("HOME", "")` form and ensures file logging is enabled.
+- Liquidsoap user unit startup is robust even if `jack-wait-ready.sh` is missing: ExecStartPre now tries the helper when present, otherwise falls back to an inline JACK readiness loop. This prevents repeated `No such file or directory` errors and race-condition restarts.
+
+### Notes
+- Addresses repeated errors: `FATAL ERROR: Log directory "HOME/.config/rdx" does not exist.` and missing JACK wait helper.
+
 ## v3.7.8 (2025-10-26)
 ### Fixed
 - Liquidsoap config sanitizer now rewrites any literal `"HOME/..."` in `set("log.file.path", ...)` (whether directory or file) to the canonical form using `getenv("HOME", "")` and normalizes to `~/.config/rdx/liquidsoap.log`.
