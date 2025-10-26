@@ -1,3 +1,13 @@
+## v3.7.12 (2025-10-26)
+### Logging: Liquidsoap HOME path hardening
+- Sanitizer now aggressively removes or disables any `log.file` / `log.file.path` directives, tolerating trailing comments and varied spacing/quoting.
+- Always injects stdout logging (`set("log.stdout", true)` + `set("log.file", false)`) so systemd appends to `~/.config/rdx/liquidsoap.log` reliably across Ubuntu 22.04/24.04.
+- Keeps HOME-path normalization to `getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log"` as a fallback if users later re-enable file logging manually.
+- Resolves the runtime `FATAL ERROR: Log directory "HOME/.config/rdx" does not exist.` by preventing Liquidsoap from touching literal HOME paths.
+
+### Scope
+- No changes to stream pipeline; only logging transport/sanitization tightened.
+
 ## v3.7.11 (2025-10-26)
 ### Logging reliability (Liquidsoap)
 - Switch to stdout-based logging by default for Liquidsoap configs:

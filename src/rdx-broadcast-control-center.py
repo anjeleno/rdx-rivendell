@@ -5005,22 +5005,21 @@ verify
             else:
                 new = inject + new
 
-        # Force-disable any explicit file logging directives
-        new = re.sub(r'(?m)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*$', 'set("log.file", false)', new)
-        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*(true|false)\s*$', 'set("log.file", false)', new)
+        # Remove/neutralize any explicit file logging directives anywhere (robust against trailing comments)
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file(?:\.path)?["\']\s*,.*$', '', new)
+        new = re.sub(r'(?mi)^\s*log\.file(?:\.path)?\s*:=\s*.*$', '', new)
+        # Also ensure any plain set("log.file", true/false) occurrences are disabled
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*(?:#.*)?$', 'set("log.file", false)', new)
+        new = re.sub(r'(?mi)^\s*log\.file\s*:=\s*(true|false)\s*(?:#.*)?$', 'set("log.file", false)', new)
 
-        # Fix literal HOME paths (directory or file) accidentally set as a string (harmless if log.file=false)
-        # Examples we rewrite:
-        #   set("log.file.path", "HOME/.config/rdx")
-        #   set("log.file.path", "HOME/.config/rdx/")
-        #   set("log.file.path", "HOME/.config/rdx/liquidsoap.log")
-        # We normalize to a file path at ~/.config/rdx/liquidsoap.log
+        # As a fallback, if any literal HOME path assignments for log.file.path remain, rewrite to canonical getenv form
         new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Also fix v2-style assignment: log.file.path := "HOME/..."
         new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Note: we intentionally keep log.file disabled to avoid Liquidsoap touching file paths.
+
+        # Tidy any excess blank lines after removals
+        new = re.sub(r'\n{3,}', '\n\n', new)
 
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
@@ -5063,16 +5062,20 @@ verify
                     new = inject + new
             else:
                 new = inject + new
-        new = re.sub(r'(?m)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*$', 'set("log.file", false)', new)
-        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*(true|false)\s*$', 'set("log.file", false)', new)
+        # Remove/neutralize any explicit file logging directives anywhere (robust against trailing comments)
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file(?:\.path)?["\']\s*,.*$', '', new)
+        new = re.sub(r'(?mi)^\s*log\.file(?:\.path)?\s*:=\s*.*$', '', new)
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*(?:#.*)?$', 'set("log.file", false)', new)
+        new = re.sub(r'(?mi)^\s*log\.file\s*:=\s*(true|false)\s*(?:#.*)?$', 'set("log.file", false)', new)
 
-        # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
+        # Rewrite any lingering HOME literal paths to canonical form (no-op if file logging remains disabled)
         new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Also fix v2-style assignment: log.file.path := "HOME/..."
         new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Keep file logging disabled regardless of path rewrites
+
+        # Tidy blank lines
+        new = re.sub(r'\n{3,}', '\n\n', new)
 
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
