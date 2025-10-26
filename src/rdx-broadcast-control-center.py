@@ -281,9 +281,9 @@ class StreamBuilderTab(QWidget):
         """Build Liquidsoap configuration string"""
         config = '''#!/usr/bin/liquidsoap
 
-# Log to user config directory so the in-app log viewer can read it
-set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")
-set("log.file", true)
+# Prefer stdout logging; RDX user service appends stdout/stderr to ~/.config/rdx/liquidsoap.log
+set("log.stdout", true)
+set("log.file", false)
 
 # Set sample rate to 48kHz
 set("frame.audio.samplerate", 48000)
@@ -4482,17 +4482,20 @@ WantedBy=default.target
                 except Exception:
                     pass
 
-                # Ensure config has file logging configured for Liquidsoap 2.x
+                # Ensure config logs to stdout (systemd appends stdout/err to our file),
+                # disabling Liquidsoap-managed file logging to avoid HOME-literal path issues.
                 try:
                     if config_file.exists():
                         cfg_txt = config_file.read_text(encoding="utf-8", errors="ignore")
-                        need_path = 'set("log.file.path"' not in cfg_txt
-                        need_enable = 'set("log.file",' not in cfg_txt
-                        if need_path or need_enable:
+                        need_stdout = 'set("log.stdout"' not in cfg_txt and 'log.stdout :=' not in cfg_txt
+                        # Always disable Liquidsoap file logging; unit redirects stdout/stderr to our logfile
+                        # to avoid runtime errors from literal HOME paths.
+                        need_disable_file = True  # we will prefix a guard to set log.file=false
+                        if need_stdout or need_disable_file:
                             cfg_prefix = (
-                                '# Auto-injected by RDX to ensure logfile is written for GUI log viewer\n'
-                                'set("log.file", true)\n'
-                                f'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")\n'
+                                '# Auto-injected by RDX: prefer stdout logging; systemd appends to ~/.config/rdx/liquidsoap.log\n'
+                                'set("log.stdout", true)\n'
+                                'set("log.file", false)\n'
                             )
                             # Place at top, but after a shebang if present
                             if cfg_txt.startswith("#!/"):
@@ -4989,7 +4992,24 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x: require default argument
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
-        # Fix literal HOME paths (directory or file) accidentally set as a string
+        # Prefer stdout logging and disable Liquidsoap-managed file logging to avoid HOME-literal path issues.
+        if 'set("log.stdout"' not in new and 'log.stdout :=' not in new:
+            # Insert stdout logging at top (after shebang if present)
+            inject = 'set("log.stdout", true)\nset("log.file", false)\n'
+            if new.startswith("#!/"):
+                first_nl = new.find("\n")
+                if first_nl != -1:
+                    new = new[:first_nl+1] + inject + new[first_nl+1:]
+                else:
+                    new = inject + new
+            else:
+                new = inject + new
+
+        # Force-disable any explicit file logging directives
+        new = re.sub(r'(?m)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*$', 'set("log.file", false)', new)
+        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*(true|false)\s*$', 'set("log.file", false)', new)
+
+        # Fix literal HOME paths (directory or file) accidentally set as a string (harmless if log.file=false)
         # Examples we rewrite:
         #   set("log.file.path", "HOME/.config/rdx")
         #   set("log.file.path", "HOME/.config/rdx/")
@@ -5000,14 +5020,7 @@ verify
         # Also fix v2-style assignment: log.file.path := "HOME/..."
         new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Ensure log.file is enabled when we set a file path
-        if 'log.file.path' in new and 'set("log.file"' not in new:
-            # Insert right after the log.file.path line when possible
-            new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
-            if 'set("log.file"' not in new:
-                new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
-        # If v2-style 'log.file := false' exists, flip to true
-        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*false\s*$', 'set("log.file", true)', new)
+        # Note: we intentionally keep log.file disabled to avoid Liquidsoap touching file paths.
 
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
@@ -5039,19 +5052,27 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Prefer stdout logging; ensure file logging is disabled
+        if 'set("log.stdout"' not in new and 'log.stdout :=' not in new:
+            inject = 'set("log.stdout", true)\nset("log.file", false)\n'
+            if new.startswith("#!/"):
+                first_nl = new.find("\n")
+                if first_nl != -1:
+                    new = new[:first_nl+1] + inject + new[first_nl+1:]
+                else:
+                    new = inject + new
+            else:
+                new = inject + new
+        new = re.sub(r'(?m)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*$', 'set("log.file", false)', new)
+        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*(true|false)\s*$', 'set("log.file", false)', new)
+
         # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
         new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Also fix v2-style assignment: log.file.path := "HOME/..."
         new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Ensure log.file is enabled when a file path is set
-        if 'log.file.path' in new and 'set("log.file"' not in new:
-            new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
-            if 'set("log.file"' not in new:
-                new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
-        # Normalize v2-style "log.file := false" to enable file logging
-        new = re.sub(r'(?m)^\s*log\.file\s*:=\s*false\s*$', 'set("log.file", true)', new)
+        # Keep file logging disabled regardless of path rewrites
 
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)

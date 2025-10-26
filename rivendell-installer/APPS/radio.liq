@@ -1,8 +1,8 @@
 #!/usr/bin/liquidsoap
 
 # Log to the user's config directory
-set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")
-set("log.file", true)
+set("log.stdout", true)
+set("log.file", false)
 
 # Set sample rate to 48kHz
 set("frame.audio.samplerate", 48000)

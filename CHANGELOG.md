@@ -1,3 +1,15 @@
+## v3.7.11 (2025-10-26)
+### Logging reliability (Liquidsoap)
+- Switch to stdout-based logging by default for Liquidsoap configs:
+  - Generator now sets `set("log.stdout", true)` and `set("log.file", false)`.
+  - User systemd unit already appends stdout/stderr to `~/.config/rdx/liquidsoap.log` via `StandardOutput/StandardError=append:`.
+  - This avoids the Ubuntu 22.04/24.04 runtime error where Liquidsoap treats `"HOME/.config/rdx"` literally when `log.file.path` is set.
+- Sanitizers inject stdout logging and force-disable `log.file` if configs still contain file logging directives; HOME path normalizations are retained but are no longer required for logging.
+- Example templates updated accordingly (`scripts/build-rdx-broadcast-center.sh`, `rivendell-installer/APPS/radio.liq`).
+
+### Notes
+- No changes to streaming behavior; this only affects logging transport. Logs still end up at `~/.config/rdx/liquidsoap.log` via systemd redirection.
+
 ## v3.7.10 (2025-10-26)
 ### Fixed
 - Patch bump to publish latest Liquidsoap HOME-path and JACK-wait hardening across environments. No functional code changes beyond v3.7.9; consolidates notes and ensures availability via package feeds.
