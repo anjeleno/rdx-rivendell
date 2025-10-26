@@ -1,3 +1,14 @@
+## v3.7.7 (2025-10-26)
+### Fixed
+- Liquidsoap startup resilience:
+  - Parse-check now tolerates slow CLIs: increased timeout and catches timeouts gracefully instead of erroring the UI.
+  - Auto-sanitizer repairs configs where `log.file.path` was set to a literal `"HOME/..."` string, replacing it with the correct `getenv("HOME", "")` form.
+- Logging
+  - Ensures `log.file` stays enabled when a file path is present and keeps writing to `~/.config/rdx/liquidsoap.log`.
+
+### Notes
+- Addresses the "FATAL ERROR: Log directory \"HOME/.config/rdx\" does not exist" issue from older configs.
+
 ## v3.7.6 (2025-10-26)
 ### Fixed
 - Liquidsoap start/stop flapping and GUI hang on Service Control start:

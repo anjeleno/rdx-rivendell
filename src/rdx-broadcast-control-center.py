@@ -4498,18 +4498,29 @@ WantedBy=default.target
                 except Exception:
                     pass
 
-                # Parse-check Liquidsoap config before launching
-                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
-                if check.returncode != 0:
+                # Parse-check Liquidsoap config before launching (tolerate slow CLIs)
+                try:
+                    check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=10.0, env=self._subprocess_env_with_localbin())
+                except subprocess.TimeoutExpired:
+                    # If -c hangs (some builds are slow), attempt sanitize and continue without blocking the UI
+                    self.sanitize_liquidsoap_config(config_file)
+                    check = None
+                if check is not None and check.returncode != 0:
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
-                    if check2.returncode != 0:
+                    try:
+                        check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=10.0, env=self._subprocess_env_with_localbin())
+                    except subprocess.TimeoutExpired:
+                        check2 = None
+                    if check2 is None or check2.returncode != 0:
                         self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
-                        if check3.returncode != 0:
-                            msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
-                            msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
+                        try:
+                            check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=10.0, env=self._subprocess_env_with_localbin())
+                        except subprocess.TimeoutExpired:
+                            check3 = None
+                        if check3 is None or check3.returncode != 0:
+                            msg2 = ("<timeout>" if check2 is None else (check2.stderr or check2.stdout or "Unknown parse error")).strip()
+                            msg3 = ("<timeout>" if check3 is None else (check3.stderr or check3.stdout or "Unknown parse error")).strip()
                             QMessageBox.critical(self, "Liquidsoap Config Error",
                                                  f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
                             return
@@ -4689,17 +4700,27 @@ WantedBy=default.target
                 except Exception:
                     pass
 
-                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
-                if check.returncode != 0:
+                try:
+                    check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=10.0, env=self._subprocess_env_with_localbin())
+                except subprocess.TimeoutExpired:
+                    self.sanitize_liquidsoap_config(config_file)
+                    check = None
+                if check is not None and check.returncode != 0:
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
-                    if check2.returncode != 0:
+                    try:
+                        check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=10.0, env=self._subprocess_env_with_localbin())
+                    except subprocess.TimeoutExpired:
+                        check2 = None
+                    if check2 is None or check2.returncode != 0:
                         self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
-                        if check3.returncode != 0:
-                            msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
-                            msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
+                        try:
+                            check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=10.0, env=self._subprocess_env_with_localbin())
+                        except subprocess.TimeoutExpired:
+                            check3 = None
+                        if check3 is None or check3.returncode != 0:
+                            msg2 = ("<timeout>" if check2 is None else (check2.stderr or check2.stdout or "Unknown parse error")).strip()
+                            msg3 = ("<timeout>" if check3 is None else (check3.stderr or check3.stdout or "Unknown parse error")).strip()
                             QMessageBox.critical(self, "Liquidsoap Config Error",
                                                  f"Failed to parse Liquidsoap config.\n\nFirst error:\n{orig_msg}\n\nAfter auto-fix:\n{msg2}\n\nAfter strict fix:\n{msg3}")
                             return
@@ -4953,6 +4974,9 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x: require default argument
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Fix literal HOME path accidentally set as a string (e.g., "HOME/.config/rdx/liquidsoap.log")
+        new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME/(?:\.config/rdx/)?liquidsoap\.log"\s*\)',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when we set a file path
         if 'log.file.path' in new and 'set("log.file"' not in new:
             # Insert right after the log.file.path line when possible
@@ -4990,6 +5014,9 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Replace any literal HOME paths for log.file.path with canonical getenv usage
+        new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME/(?:\.config/rdx/)?liquidsoap\.log"\s*\)',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when a file path is set
         if 'log.file.path' in new and 'set("log.file"' not in new:
             new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
