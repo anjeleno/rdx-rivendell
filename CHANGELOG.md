@@ -1,3 +1,14 @@
+## v3.7.6 (2025-10-26)
+### Fixed
+- Liquidsoap start/stop flapping and GUI hang on Service Control start:
+  - User systemd unit now always gates startup on JACK readiness. If the helper script is missing, an inline ExecStartPre fallback waits up to 30s for JACK ports, preventing rapid restarts.
+  - The unit also pre-creates the log file and config directory to guarantee that the in-app log viewer has a file to tail immediately.
+- Liquidsoap log reliability:
+  - Ensured `~/.config/rdx/liquidsoap.log` is touched before launch and also created by the unit with `StandardOutput=append:` and a pre-step. Log file appears even if Liquidsoap exits early.
+
+### Notes
+- No behavior changes for Icecast or Stereo Tool. Liquidsoap-only adjustments to stabilize startup and logs.
+
 ## v3.7.5 (2025-10-26)
 ### Fixed
 - Liquidsoap log file now created reliably:

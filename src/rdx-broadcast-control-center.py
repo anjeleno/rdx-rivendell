@@ -4253,9 +4253,12 @@ WantedBy=default.target
         try:
             res = subprocess.run([self._liquidsoap_bin(), "-h", f"encoder.{name}"],
                                  capture_output=True, text=True,
+                                 timeout=1.0,
                                  env=self._subprocess_env_with_localbin())
             out = (res.stdout or "") + (res.stderr or "")
             return res.returncode == 0 and "Plugin not found" not in out
+        except subprocess.TimeoutExpired:
+            return False
         except Exception:
             return False
 
@@ -4309,12 +4312,27 @@ WantedBy=default.target
                             status_label.setText("⏳ Probe Timeout")
                             status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
                             continue
-                        if result.stdout.strip() == "active":
+                        state = result.stdout.strip()
+                        if state == "active":
                             status_label.setText("✅ Running")
                             status_label.setStyleSheet("QLabel { color: #27ae60; font-weight: bold; }")
                         else:
-                            status_label.setText("❌ Stopped")
-                            status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                            # Try to distinguish failed/restarting vs clean stop to avoid UI loop confusion
+                            try:
+                                show = subprocess.run(["systemctl", "--user", "show", "-p", "SubState", "rdx-liquidsoap"],
+                                                      capture_output=True, text=True, timeout=0.7)
+                                sub = (show.stdout or "").strip()
+                            except subprocess.TimeoutExpired:
+                                sub = ""
+                            if "SubState=auto-restart" in sub:
+                                status_label.setText("♻️ Restarting")
+                                status_label.setStyleSheet("QLabel { color: #f39c12; font-weight: bold; }")
+                            elif "SubState=failed" in sub:
+                                status_label.setText("❌ Failed")
+                                status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
+                            else:
+                                status_label.setText("❌ Stopped")
+                                status_label.setStyleSheet("QLabel { color: #e74c3c; font-weight: bold; }")
                     else:
                         # Detect by process name
                         try:
@@ -4449,15 +4467,46 @@ WantedBy=default.target
                 except Exception:
                     pass
 
+                # Ensure log file exists early so UI can tail it even if Liquidsoap fails fast
+                try:
+                    log_file.touch(exist_ok=True)
+                except Exception:
+                    pass
+
+                # Ensure config has file logging configured for Liquidsoap 2.x
+                try:
+                    if config_file.exists():
+                        cfg_txt = config_file.read_text(encoding="utf-8", errors="ignore")
+                        need_path = 'set("log.file.path"' not in cfg_txt
+                        need_enable = 'set("log.file",' not in cfg_txt
+                        if need_path or need_enable:
+                            cfg_prefix = (
+                                '# Auto-injected by RDX to ensure logfile is written for GUI log viewer\n'
+                                'set("log.file", true)\n'
+                                f'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")\n'
+                            )
+                            # Place at top, but after a shebang if present
+                            if cfg_txt.startswith("#!/"):
+                                first_nl = cfg_txt.find("\n")
+                                if first_nl != -1:
+                                    cfg_txt = cfg_txt[:first_nl+1] + cfg_prefix + cfg_txt[first_nl+1:]
+                                else:
+                                    cfg_txt = cfg_prefix + cfg_txt
+                            else:
+                                cfg_txt = cfg_prefix + cfg_txt
+                            config_file.write_text(cfg_txt, encoding="utf-8")
+                except Exception:
+                    pass
+
                 # Parse-check Liquidsoap config before launching
-                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
+                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
                 if check.returncode != 0:
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
+                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
                     if check2.returncode != 0:
                         self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
+                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
                         if check3.returncode != 0:
                             msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
                             msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
@@ -4640,14 +4689,14 @@ WantedBy=default.target
                 except Exception:
                     pass
 
-                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
+                check = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
                 if check.returncode != 0:
                     orig_msg = (check.stderr or check.stdout or "Unknown parse error").strip()
                     self.sanitize_liquidsoap_config(config_file)
-                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
+                    check2 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
                     if check2.returncode != 0:
                         self.sanitize_liquidsoap_config_strict(config_file)
-                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, env=self._subprocess_env_with_localbin())
+                        check3 = subprocess.run([self._liquidsoap_bin(), "-c", str(config_file)], capture_output=True, text=True, timeout=5.0, env=self._subprocess_env_with_localbin())
                         if check3.returncode != 0:
                             msg2 = (check2.stderr or check2.stdout or "Unknown parse error").strip()
                             msg3 = (check3.stderr or check3.stdout or "Unknown parse error").strip()
@@ -5358,7 +5407,22 @@ WantedBy=default.target
             env_home = str(Path.home())
             env_xdg = str(Path.home() / ".config")
 
-            pre = f"ExecStartPre=/usr/bin/env bash -lc \"{jack_wait} --timeout 30\"\n" if has_jack_wait else ""
+            # Where to append stdout/stderr as a safety-net for visibility
+            log_path = str(Path.home() / ".config" / "rdx" / "liquidsoap.log")
+
+            # Build ExecStartPre chain:
+            # 1) Ensure config dir and log file exist (so GUI tailer has a file even on early failure)
+            # 2) Wait for JACK to be ready. Use helper if present; otherwise inline bash loop as a fallback.
+            pre_lines = []
+            pre_lines.append(f"ExecStartPre=/usr/bin/env bash -lc \"mkdir -p {shlex.quote(str(cfg_dir))} && touch {shlex.quote(log_path)}\"")
+            if has_jack_wait:
+                pre_lines.append(f"ExecStartPre=/usr/bin/env bash -lc \"{jack_wait} --timeout 30\"")
+            else:
+                # Inline fallback: wait up to 30s for jack_lsp and at least one port
+                pre_lines.append(
+                    "ExecStartPre=/usr/bin/env bash -lc \"for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1\""
+                )
+            pre = "\n".join(pre_lines) + "\n"
             unit = f"""[Unit]
 Description=RDX Liquidsoap (per-user)
 After=default.target
@@ -5370,6 +5434,8 @@ Type=simple
 Environment=HOME={env_home}
 Environment=XDG_CONFIG_HOME={env_xdg}
 ExecStart={liq_bin} {str(config_file)}
+StandardOutput=append:{log_path}
+StandardError=append:{log_path}
 Restart=on-failure
 RestartSec=2
 
