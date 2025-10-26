@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.7.4"
+PACKAGE_VERSION="3.7.5"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -583,15 +583,15 @@ set -e
 
 case "$1" in
     configure)
-        # Attempt to ensure Liquidsoap FFmpeg plugin is available automatically
+        # Note: Do not run apt/apt-get in maintainer scripts. If Liquidsoap is installed
+        # but missing the FFmpeg encoder, we leave a friendly hint and let users install
+        # plugins via the GUI (Services → Install Liquidsoap FFmpeg Plugin) or by running:
+        #    pkexec /bin/bash /usr/share/rdx/install-liquidsoap-plugin.sh
         if command -v liquidsoap >/dev/null 2>&1; then
-            # If ffmpeg encoder help shows missing, try install
             if ! liquidsoap -h encoder.ffmpeg >/dev/null 2>&1 || liquidsoap -h encoder.ffmpeg 2>&1 | grep -qi "Plugin not found"; then
-                echo "[postinst] Ensuring Liquidsoap FFmpeg plugin is installed..."
-                if command -v /usr/share/rdx/install-liquidsoap-plugin.sh >/dev/null 2>&1; then
-                    # First try current repos; on failure, try official repo path
-                    /usr/share/rdx/install-liquidsoap-plugin.sh current || /usr/share/rdx/install-liquidsoap-plugin.sh official || true
-                fi
+                echo "[postinst] Liquidsoap detected without FFmpeg encoder."
+                echo "[postinst] Tip: Use the RDX app (Services tab) to install the plugin,"
+                echo "[postinst] or run: pkexec /bin/bash /usr/share/rdx/install-liquidsoap-plugin.sh"
             fi
         fi
 
@@ -733,27 +733,31 @@ check_ffmpeg_plugin() {
 }
 
 main() {
+    # Fast-path: if plugin already present, do nothing
+    if check_ffmpeg_plugin; then
+        log "FFmpeg plugin already available; nothing to do."
+        exit 0
+    fi
+
     if ! command -v apt-get >/dev/null 2>&1; then
         log "apt-get not found; cannot install packages automatically"
         exit 1
     fi
-    # Ensure apt cache is fresh
-    enable_universe_multiverse || true
-    apt-get update || true
-
-    if check_ffmpeg_plugin; then
-        log "FFmpeg plugin already available."
-        exit 0
-    fi
 
     case "$MODE" in
         current)
+            enable_universe_multiverse || true
+            apt-get update || true
             try_install_plugins_from_current || exit 1
             ;;
         official)
+            enable_universe_multiverse || true
+            apt-get update || true
             try_install_plugins_from_current || { add_official_repo; try_install_plugins_from_current || exit 1; }
             ;;
         vendor)
+            enable_universe_multiverse || true
+            apt-get update || true
             try_install_plugins_from_current || { add_vendor_repo; try_install_plugins_from_current || exit 1; }
             ;;
         *)
@@ -838,6 +842,10 @@ main(){
 main "$@"
 EOF
 chmod +x "$PACKAGE_DIR/usr/share/rdx/install-deps.sh"
+
+# Ship JACK readiness helper so systemd units can reliably wait for JACK
+install -d "$PACKAGE_DIR/usr/local/bin"
+install -m 0755 "$(dirname "$0")/../scripts/jack-wait-ready.sh" "$PACKAGE_DIR/usr/local/bin/jack-wait-ready.sh"
 
 # Local apt-based installer helper (embedded copy)
 # Note: This is primarily for reference after install. For initial installation,

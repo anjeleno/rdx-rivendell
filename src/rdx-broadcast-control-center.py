@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.4
+RDX Professional Broadcast Control Center v3.7.5
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -283,6 +283,7 @@ class StreamBuilderTab(QWidget):
 
 # Log to user config directory so the in-app log viewer can read it
 set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")
+set("log.file", true)
 
 # Set sample rate to 48kHz
 set("frame.audio.samplerate", 48000)
@@ -4903,6 +4904,13 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x: require default argument
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Ensure log.file is enabled when we set a file path
+        if 'log.file.path' in new and 'set("log.file"' not in new:
+            # Insert right after the log.file.path line when possible
+            new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
+            if 'set("log.file"' not in new:
+                new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
+
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
@@ -4933,6 +4941,12 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Ensure log.file is enabled when a file path is set
+        if 'log.file.path' in new and 'set("log.file"' not in new:
+            new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
+            if 'set("log.file"' not in new:
+                new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
+
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
         # Replace quoted or unquoted Nxk with integer Nx000 (approximate kbps to bps)
@@ -5331,7 +5345,7 @@ WantedBy=default.target
             unit_dir.mkdir(parents=True, exist_ok=True)
             unit_path = unit_dir / "rdx-liquidsoap.service"
 
-            # Prefer readiness helper if installed
+            # Prefer readiness helper (now shipped in the package)
             jack_wait = "/usr/local/bin/jack-wait-ready.sh"
             has_jack_wait = os.path.isfile(jack_wait) and os.access(jack_wait, os.X_OK)
 
@@ -5339,10 +5353,12 @@ WantedBy=default.target
             cfg_dir = config_file.parent
             cfg_dir.mkdir(parents=True, exist_ok=True)
 
-            # Environment PATH to prefer ~/.local/bin first (OPAM shim)
+            # Environment to prefer ~/.local/bin and ensure HOME/XDG paths are set for logging
             env_path = str(Path.home() / ".local" / "bin") + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            env_home = str(Path.home())
+            env_xdg = str(Path.home() / ".config")
 
-            pre = f"ExecStartPre={jack_wait} 30\n" if has_jack_wait else ""
+            pre = f"ExecStartPre=/usr/bin/env bash -lc \"{jack_wait} --timeout 30\"\n" if has_jack_wait else ""
             unit = f"""[Unit]
 Description=RDX Liquidsoap (per-user)
 After=default.target
@@ -5351,6 +5367,8 @@ Wants=default.target
 [Service]
 Type=simple
 {pre}Environment=PATH={env_path}
+Environment=HOME={env_home}
+Environment=XDG_CONFIG_HOME={env_xdg}
 ExecStart={liq_bin} {str(config_file)}
 Restart=on-failure
 RestartSec=2
@@ -6088,7 +6106,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.4")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.5")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6156,7 +6174,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.4")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.5")
 
         # ---- System tray ----
     def _setup_tray(self):

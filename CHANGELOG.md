@@ -1,3 +1,34 @@
+## v3.7.5 (2025-10-26)
+### Fixed
+- Liquidsoap log file now created reliably:
+  - Generator enables file logging with `set("log.file", true)` alongside `log.file.path`.
+  - Sanitizers insert `set("log.file", true)` automatically when missing.
+
+### Installer
+- Updated `rivendell-installer/APPS/radio.liq` to enable file logging by default.
+
+## v3.7.5 (2025-10-26)
+### Packaging
+- Post-install script remains hint-only (no apt operations during dpkg configure).
+- Liquidsoap plugin installer hardened to be smart and quiet:
+  - Checks for the FFmpeg plugin first and exits immediately if present (no repo changes, no apt update).
+  - Only touches apt when the plugin is missing.
+  - Never adds the savonet/ppa unless explicitly requested via "official" mode.
+  - Keeps installs scoped to current Ubuntu repos in default mode.
+
+Result: Fresh installs resolve dependencies via apt/gdebi automatically; existing systems aren’t disturbed, and no redundant repo operations occur.
+
+## v3.7.5 (2025-10-26)
+### Packaging
+- Removed apt operations from the Debian postinst (no more adding PPAs or installing packages during dpkg configure). Postinst now displays a hint to install Liquidsoap plugins via the GUI or helper script after install.
+- The package now ships `/usr/local/bin/jack-wait-ready.sh` so services can reliably gate on JACK availability.
+
+### Reliability
+- Liquidsoap user systemd unit now sets `HOME` and `XDG_CONFIG_HOME` explicitly and uses the JACK wait helper with a 30s timeout. This prevents start/stop oscillation and ensures `~/.config/rdx/liquidsoap.log` is created.
+
+### Notes
+- To install the FFmpeg encoder plugin for Liquidsoap, use Services → “Install Liquidsoap FFmpeg Plugin” in the app, or run: `pkexec /bin/bash /usr/share/rdx/install-liquidsoap-plugin.sh`.
+
 ## v3.7.4 (2025-10-26)
 ### Fixed
 - Liquidsoap 2.x compatibility: `getenv` now called with a default value in generated configs to avoid “Missing arguments in function application: string.”
