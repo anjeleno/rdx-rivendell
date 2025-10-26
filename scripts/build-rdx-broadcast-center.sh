@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.7.2"
+PACKAGE_VERSION="3.7.3"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -839,6 +839,29 @@ main "$@"
 EOF
 chmod +x "$PACKAGE_DIR/usr/share/rdx/install-deps.sh"
 
+# Local apt-based installer helper (embedded copy)
+# Note: This is primarily for reference after install. For initial installation,
+# download the .deb and the same-named install-local-<ver>.sh from the release
+# page and place them in the same folder, or pass the .deb path as an argument.
+cat > "$PACKAGE_DIR/usr/share/rdx/install-local-${PACKAGE_VERSION}.sh" << EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEB_PATH="\${1:-rdx-broadcast-control-center_${PACKAGE_VERSION}_amd64.deb}"
+
+if [[ ! -f "\${DEB_PATH}" ]]; then
+    echo "Usage: \${0##*/} </path/to/rdx-broadcast-control-center_${PACKAGE_VERSION}_amd64.deb>" >&2
+    echo "If no argument is provided, it looks for ./rdx-broadcast-control-center_${PACKAGE_VERSION}_amd64.deb" >&2
+    exit 2
+fi
+
+echo "Installing \${DEB_PATH} via apt (auto-resolves dependencies)…"
+sudo apt update || true
+sudo apt install -y "\${DEB_PATH}"
+echo "Done. Launch with: rdx-control-center"
+EOF
+chmod +x "$PACKAGE_DIR/usr/share/rdx/install-local-${PACKAGE_VERSION}.sh"
+
 # OPAM-based installer (PPA-free build)
 cat > "$PACKAGE_DIR/usr/share/rdx/install-liquidsoap-opam.sh" << 'EORDX_OPAM'
 #!/usr/bin/env bash
@@ -988,6 +1011,10 @@ find "$PACKAGE_DIR" -type d -exec chmod 755 {} \;
 find "$PACKAGE_DIR" -type f -exec chmod 644 {} \;
 chmod +x "$PACKAGE_DIR/usr/local/bin/"*
 chmod +x "$PACKAGE_DIR/DEBIAN/"*
+# Ensure helper scripts in /usr/share/rdx are executable
+if ls "$PACKAGE_DIR/usr/share/rdx/"*.sh >/dev/null 2>&1; then
+    chmod +x "$PACKAGE_DIR/usr/share/rdx/"*.sh || true
+fi
 
 # Build the package
 echo "📦 Building package..."

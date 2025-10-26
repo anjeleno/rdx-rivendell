@@ -56,13 +56,13 @@ cat > "$LOCAL_INSTALLER" <<EOL
 #!/usr/bin/env bash
 set -euo pipefail
 FILE="rdx-broadcast-control-center_${VER}_amd64.deb"
-if [[ ! -f "$FILE" ]]; then
-  echo "Cannot find $FILE in current directory. Place this script next to the .deb and rerun." >&2
+if [[ ! -f "\$FILE" ]]; then
+  echo "Cannot find \$FILE in current directory. Place this script next to the .deb and rerun." >&2
   exit 1
 fi
-echo "Installing $FILE via apt (auto-resolves dependencies)…"
+echo "Installing \$FILE via apt (auto-resolves dependencies)…"
 sudo apt update || true
-sudo apt install -y "./$FILE"
+sudo apt install -y "./\$FILE"
 echo "Done. Launch with: rdx-control-center"
 EOL
 chmod +x "$LOCAL_INSTALLER"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.2
+RDX Professional Broadcast Control Center v3.7.3
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -4898,6 +4898,9 @@ verify
         except Exception:
             return
         new = txt
+        # Remove shebang if present; Liquidsoap parse-check (-c) treats it as a syntax error
+        if new.startswith("#!/"):
+            new = re.sub(r'^#!.*\n', '', new, count=1)
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
@@ -4923,6 +4926,9 @@ verify
         except Exception:
             return
         new = txt
+        # Remove shebang if present; ensure file is parseable by liquidsoap -c
+        if new.startswith("#!/"):
+            new = re.sub(r'^#!.*\n', '', new, count=1)
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
         # Replace quoted or unquoted Nxk with integer Nx000 (approximate kbps to bps)
@@ -5436,7 +5442,11 @@ class StereoToolManagerTab(QWidget):
 
         # Load any saved 'latest' URL
         try:
-            self.latest_url_input.setText(self._load_latest_url())
+            saved = self._load_latest_url()
+            if not saved:
+                # Default to vendor's direct JACK x64 link if nothing saved
+                saved = "https://www.stereotool.com/download/stereo_tool_gui_jack_64"
+            self.latest_url_input.setText(saved)
         except Exception:
             pass
 
@@ -5595,7 +5605,10 @@ class StereoToolManagerTab(QWidget):
                     unique.append(c)
                     seen.add(c)
             if not unique:
-                raise RuntimeError("No Linux JACK x64 candidates found on page.")
+                # Fallback: use the known direct JACK x64 URL suggested by vendor
+                direct = "https://www.stereotool.com/download/stereo_tool_gui_jack_64"
+                candidates = [direct]
+                unique = candidates
             pick = unique[0]
             if len(unique) > 1:
                 item, ok = QInputDialog.getItem(self, "Select Artifact", "Choose a Stereo Tool artifact to download:", unique, 0, False)
@@ -6071,7 +6084,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.2")
+    self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.3")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6139,7 +6152,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.2")
+    self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.3")
 
         # ---- System tray ----
     def _setup_tray(self):

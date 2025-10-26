@@ -1,3 +1,19 @@
+## v3.7.3 (2025-10-26)
+### Fixed
+- Liquidsoap config parse-check would fail with “Error 3: Syntax error!” at line 1 if the config began with a shebang. The app now strips a leading shebang during sanitize passes before parse-checking/starting.
+
+### UX
+- Stereo Tool Manager:
+  - The “Latest URL” field now defaults to the vendor’s direct JACK x64 link when unset.
+  - Auto-download now falls back to that URL if parsing the downloads page yields no Linux JACK x64 artifacts.
+
+### Packaging
+- The .deb now embeds a local apt-based installer helper at `/usr/share/rdx/install-local-<version>.sh` (executable) for reference and post-install use.
+- Ensured all helper scripts under `/usr/share/rdx/` are executable in the package.
+
+### Release
+- Publishing script hardened for asset generation; attaches `.deb`, `install-rdx.sh`, and `install-local-<version>.sh` to releases.
+
 ## v3.7.2 (2025-10-26)
 ### Packaging & Release
 - Releases now include convenience installers alongside the .deb:
