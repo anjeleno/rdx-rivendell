@@ -1,4 +1,11 @@
-## v3.7.1 (Unreleased)
+## v3.7.2 (2025-10-26)
+### Packaging & Release
+- Releases now include convenience installers alongside the .deb:
+  - `install-rdx.sh` smart network installer that fetches and installs the latest release.
+  - `install-local-<version>.sh` (attached per release): apt-based local installer that installs the bundled .deb and resolves all dependencies automatically.
+- No functional code changes in this patch; focused on publishing and install experience.
+
+## v3.7.1 (2025-10-26)
 ### Installer & First-Run
 - Auto-resolve fresh-install gaps on Ubuntu 24.04+:
   - Package Depends now include jackd2, icecast2, vlc, and vlc-plugin-jack to ensure apt resolves core services automatically.
@@ -6,7 +13,7 @@
   - First-run prompt in Service Control offers to install missing services (with live logs via pkexec) and re-checks status.
 
 ### Notes
-- If you install via `dpkg -i` directly, let apt resolve dependencies (`sudo apt install -f`). The bundled smart installer and apt-based installs handle this automatically.
+- If you install via `dpkg -i` directly, let apt resolve dependencies (or use the included `install-local-<version>.sh`). The bundled smart installer and apt-based installs handle this automatically.
 
 ## v3.7.0 (2025-10-25)
 ### Fixed

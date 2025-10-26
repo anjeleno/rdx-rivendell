@@ -44,6 +44,34 @@ if [[ ! -f "$ASSET" ]]; then
   exit 1
 fi
 
+# Include convenience installers as additional assets when available
+EXTRA_ASSETS=( )
+# 1) Smart network installer that fetches latest (if present in repo)
+if [[ -f "install-rdx.sh" ]]; then
+  EXTRA_ASSETS+=( "install-rdx.sh" )
+fi
+# 2) Local installer script to install this specific .deb with apt (auto-resolves deps)
+LOCAL_INSTALLER=$(mktemp)
+cat > "$LOCAL_INSTALLER" <<EOL
+#!/usr/bin/env bash
+set -euo pipefail
+FILE="rdx-broadcast-control-center_${VER}_amd64.deb"
+if [[ ! -f "$FILE" ]]; then
+  echo "Cannot find $FILE in current directory. Place this script next to the .deb and rerun." >&2
+  exit 1
+fi
+echo "Installing $FILE via apt (auto-resolves dependencies)…"
+sudo apt update || true
+sudo apt install -y "./$FILE"
+echo "Done. Launch with: rdx-control-center"
+EOL
+chmod +x "$LOCAL_INSTALLER"
+
+# We'll upload the local installer under a friendly name
+LOCAL_INSTALLER_NAME="install-local-${VER}.sh"
+cp "$LOCAL_INSTALLER" "/tmp/${LOCAL_INSTALLER_NAME}"
+EXTRA_ASSETS+=( "/tmp/${LOCAL_INSTALLER_NAME}" )
+
 # Ensure idempotency: delete existing release if present (keep tag)
 if gh release view "$TAG" >/dev/null 2>&1; then
   echo "Deleting existing release $TAG (keeping tag)..."
@@ -55,11 +83,11 @@ if $FROM_CHANGELOG; then
   # Extract only the section for this tag and use it as notes
   NOTES_TMP=$(mktemp)
   python3 scripts/extract-changelog-section.py "$TAG" CHANGELOG.md > "$NOTES_TMP"
-  gh release create "$TAG" "$ASSET" --title "$TAG" --notes-file "$NOTES_TMP"
+  gh release create "$TAG" "$ASSET" "${EXTRA_ASSETS[@]}" --title "$TAG" --notes-file "$NOTES_TMP"
   rm -f "$NOTES_TMP"
 else
   # Single-step create with asset attached
-  gh release create "$TAG" "$ASSET" --title "$TAG" "${NOTES_ARGS[@]}"
+  gh release create "$TAG" "$ASSET" "${EXTRA_ASSETS[@]}" --title "$TAG" "${NOTES_ARGS[@]}"
 fi
 
 # Verify asset presence
