@@ -5017,11 +5017,11 @@ verify
         # Remove shebang if present; ensure file is parseable by liquidsoap -c
         if new.startswith("#!/"):
             new = re.sub(r'^#!.*\n', '', new, count=1)
-    # Fix getenv signature for Liquidsoap 2.x
-    new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
-    # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
-    new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
-             'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
+        # Fix getenv signature for Liquidsoap 2.x
+        new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
+        new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
         # Ensure log.file is enabled when a file path is set
         if 'log.file.path' in new and 'set("log.file"' not in new:
             new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
