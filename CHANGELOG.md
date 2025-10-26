@@ -1,3 +1,13 @@
+## v3.7.1 (Unreleased)
+### Installer & First-Run
+- Auto-resolve fresh-install gaps on Ubuntu 24.04+:
+  - Package Depends now include jackd2, icecast2, vlc, and vlc-plugin-jack to ensure apt resolves core services automatically.
+  - New helper `/usr/share/rdx/install-deps.sh` installs core services and sets audio realtime limits; callable from GUI and CLI.
+  - First-run prompt in Service Control offers to install missing services (with live logs via pkexec) and re-checks status.
+
+### Notes
+- If you install via `dpkg -i` directly, let apt resolve dependencies (`sudo apt install -f`). The bundled smart installer and apt-based installs handle this automatically.
+
 ## v3.7.0 (2025-10-25)
 ### Fixed
 - JACK Graph profiles: "Save Current As…" now reliably saves to `~/.config/rdx/jack_profiles.json`.

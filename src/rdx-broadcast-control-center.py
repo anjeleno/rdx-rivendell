@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.0
+RDX Professional Broadcast Control Center v3.7.1
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -1133,7 +1133,7 @@ class JackMatrixTab(QWidget):
                     pass
                 return False
 
-            # Check if JACK is running
+                # Check if JACK is running
             try:
                 # First, a fast probe
                 base = subprocess.run(["jack_lsp"], capture_output=True, text=True, timeout=1.2)
@@ -3605,6 +3605,15 @@ class ServiceControlTab(QWidget):
         master_layout.addWidget(emergency_btn, 1, 0, 1, 2)
         
         layout.addWidget(master_group)
+
+        # Optional tools row
+        tools_row = QHBoxLayout()
+        deps_btn = QPushButton("Install Dependencies…")
+        deps_btn.setToolTip("Install core services (JACK, Icecast, VLC) and audio permissions")
+        deps_btn.clicked.connect(self.install_core_deps_via_dialog)
+        tools_row.addWidget(deps_btn)
+        tools_row.addStretch(1)
+        layout.addLayout(tools_row)
         
         # Service Dependencies Info
         deps_group = QGroupBox("📊 Service Dependencies")
@@ -3668,7 +3677,104 @@ class ServiceControlTab(QWidget):
         # Apply initial JACK management state to controls
         self._apply_jack_manage_mode_to_controls()
 
-    # ---- JACK settings persistence and helpers ---------------------------
+        # After UI is shown, optionally prompt to install missing core dependencies on fresh systems
+        QTimer.singleShot(400, self.maybe_prompt_install_core_deps)
+
+    # ---- Core dependency checks and installer prompt --------------------
+    def _missing_core_deps(self) -> list:
+        """Return a list of missing core tools that impact first-run UX.
+        We check presence of binaries as a proxy for packages.
+        """
+        missing = []
+        want = {
+            'jackd': ['jackd', 'jack_control'],
+            'icecast2': ['icecast2'],
+            'vlc': ['vlc'],
+        }
+        for label, candidates in want.items():
+            ok = False
+            for c in candidates:
+                if shutil.which(c):
+                    ok = True
+                    break
+            if not ok:
+                missing.append(label)
+        return missing
+
+    def maybe_prompt_install_core_deps(self):
+        try:
+            missing = self._missing_core_deps()
+        except Exception:
+            missing = []
+        if not missing:
+            return
+        # Avoid nagging repeatedly: remember we prompted recently
+        try:
+            flag = Path.home() / '.config' / 'rdx' / 'core_deps_prompted'
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            if flag.exists() and (time.time() - flag.stat().st_mtime) < 3600:
+                return
+        except Exception:
+            pass
+
+        msg = (
+            "Some core broadcast tools are missing: " + ", ".join(missing) + "\n\n"
+            "Install now? This will:\n"
+            "  • Install jackd2, icecast2, vlc, vlc-plugin-jack, qjackctl\n"
+            "  • Ensure your user is in the 'audio' group (for realtime)\n"
+            "  • Add sane realtime limits for @audio\n\n"
+            "You may be asked for your admin password."
+        )
+        ret = QMessageBox.question(self, "Install Core Dependencies?", msg,
+                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        try:
+            # Touch prompt flag regardless to reduce nagging if user says No
+            (Path.home() / '.config' / 'rdx' / 'core_deps_prompted').touch()
+        except Exception:
+            pass
+        if ret != QMessageBox.Yes:
+            return
+
+        # Run installer with a modal log window
+        try:
+            self._run_deps_installer_dialog()
+        except Exception as e:
+            QMessageBox.critical(self, "Install Error", f"Could not run installer: {e}")
+
+    def install_core_deps_via_dialog(self):
+        """Manual entry point from the tools row to run the dependency installer."""
+        try:
+            self._run_deps_installer_dialog()
+        except Exception as e:
+            QMessageBox.critical(self, "Install Error", f"Could not run installer: {e}")
+
+    def _run_deps_installer_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Installing Core Dependencies…")
+        v = QVBoxLayout(dlg)
+        log_view = QTextEdit(); log_view.setReadOnly(True); log_view.setMinimumSize(600, 320)
+        v.addWidget(log_view)
+        proc = QProcess(dlg)
+        proc.setProgram("pkexec")
+        proc.setArguments(["/bin/bash", "/usr/share/rdx/install-deps.sh"]) 
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.readyRead.connect(lambda: log_view.append(proc.readAll().data().decode(errors="replace").rstrip()))
+        fin = {"code": None}
+        proc.finished.connect(lambda code, status: (fin.update({"code": int(code)}), dlg.accept()))
+        proc.start()
+        dlg.exec_()
+        code = fin["code"] if fin["code"] is not None else 1
+        if code == 0:
+            QMessageBox.information(self, "Dependencies Installed",
+                                    "Core dependencies were installed. You may need to log out and back in for audio group changes to take effect.")
+            # Re-check statuses after a short delay
+            QTimer.singleShot(1000, self.update_all_status)
+        else:
+            tail = "\n".join(log_view.toPlainText().splitlines()[-80:])
+            QMessageBox.warning(self, "Install Incomplete",
+                                 f"The dependency installer exited with code {code}.\n\nLast output:\n{tail}")
+
+        # ---- JACK settings persistence and helpers ---------------------------
     def _jack_settings_path(self) -> Path:
         return Path.home() / ".config" / "rdx" / "jack_settings.json"
 
@@ -5965,7 +6071,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.0")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.1")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6033,7 +6139,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.0")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.1")
 
         # ---- System tray ----
     def _setup_tray(self):

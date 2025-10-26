@@ -105,17 +105,17 @@ install_dependencies() {
         "22.04")
             print_info "Using Ubuntu 22.04 (Jammy) dependency set"
             # 22.04 has python3-pyqt5 which includes widgets
-            OPTIONAL_DEPS="jackd2 liquidsoap icecast2 qjackctl"
+            OPTIONAL_DEPS="jackd2 liquidsoap icecast2 vlc vlc-plugin-jack qjackctl"
             ;;
         "24.04"|"24.10"|"25."*)
             print_info "Using Ubuntu 24.04+ dependency set"
             # 24.04+ may have separate widget packages, but we stick to main package for compatibility
-            OPTIONAL_DEPS="jackd2 liquidsoap icecast2 qjackctl"
+            OPTIONAL_DEPS="jackd2 liquidsoap icecast2 vlc vlc-plugin-jack qjackctl"
             ;;
         *)
             print_warning "Ubuntu version $UBUNTU_VERSION not specifically tested"
             print_info "Using standard dependency set"
-            OPTIONAL_DEPS="jackd2 liquidsoap icecast2 qjackctl"
+            OPTIONAL_DEPS="jackd2 liquidsoap icecast2 vlc vlc-plugin-jack qjackctl"
             ;;
     esac
     

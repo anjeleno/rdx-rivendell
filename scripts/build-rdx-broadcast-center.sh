@@ -6,7 +6,7 @@ set -e
 
 # Package information
 PACKAGE_NAME="rdx-broadcast-control-center"
-PACKAGE_VERSION="3.7.0"
+PACKAGE_VERSION="3.7.1"
 ARCHITECTURE="amd64"
 MAINTAINER="RDX Development Team <rdx@example.com>"
 DESCRIPTION="RDX Professional Broadcast Control Center - Complete GUI for streaming, icecast, JACK, and service management"
@@ -556,8 +556,8 @@ Section: sound
 Priority: optional
 Architecture: $ARCHITECTURE
 Maintainer: $MAINTAINER
-Depends: python3 (>= 3.6), python3-pyqt5, liquidsoap (>= 2.0.0)
-Recommends: liquidsoap-plugin-ffmpeg | liquidsoap-plugin-all | liquidsoap-plugin-extra, jackd2, icecast2, qjackctl
+Depends: python3 (>= 3.6), python3-pyqt5, liquidsoap (>= 2.0.0), jackd2, icecast2, vlc, vlc-plugin-jack
+Recommends: liquidsoap-plugin-ffmpeg | liquidsoap-plugin-all | liquidsoap-plugin-extra, qjackctl
 Suggests: stereo-tool
 Description: $DESCRIPTION
  Professional broadcast streaming center providing complete GUI management
@@ -774,6 +774,70 @@ main() {
 main "$@"
 EOF
 chmod +x "$PACKAGE_DIR/usr/share/rdx/install-liquidsoap-plugin.sh"
+
+# Core dependency installer: jackd2, icecast2, vlc, vlc-plugin-jack, qjackctl and audio permissions
+cat > "$PACKAGE_DIR/usr/share/rdx/install-deps.sh" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+log(){ echo "[rdx-deps] $*"; }
+have(){ command -v "$1" >/dev/null 2>&1; }
+
+# Determine invoking user for group membership fixes
+resolve_user(){
+    if [ "${EUID}" -ne 0 ]; then id -un; return 0; fi
+    if [ -n "${PKEXEC_UID:-}" ]; then getent passwd "${PKEXEC_UID}" | cut -d: -f1; return 0; fi
+    if [ -n "${SUDO_UID:-}" ]; then echo "${SUDO_USER}"; return 0; fi
+    if logname 2>/dev/null; then logname; return 0; fi
+    echo "root"
+}
+
+enable_repos(){
+    if have add-apt-repository; then
+        add-apt-repository -y universe || true
+        add-apt-repository -y multiverse || true
+    else
+        apt-get update || true
+    fi
+}
+
+install_pkgs(){
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update || true
+    apt-get install -y --no-install-recommends jackd2 icecast2 vlc vlc-plugin-jack qjackctl || true
+}
+
+ensure_audio_perms(){
+    local user; user="$(resolve_user)"
+    if id "$user" >/dev/null 2>&1; then
+        log "Adding $user to 'audio' group (if not already)"
+        usermod -a -G audio "$user" 2>/dev/null || true
+    fi
+    # Ensure realtime privileges for @audio
+    local lim="/etc/security/limits.d/99-rdx-audio.conf"
+    if [ ! -f "$lim" ]; then
+        cat > "$lim" <<EOL
+@audio   -  rtprio     95
+@audio   -  memlock    unlimited
+@audio   -  nice       -19
+EOL
+    fi
+}
+
+main(){
+    if ! have apt-get; then
+        log "apt-get not found; cannot install dependencies automatically"
+        exit 1
+    fi
+    enable_repos || true
+    install_pkgs || true
+    ensure_audio_perms || true
+    log "Core dependencies pass completed. A reboot or re-login may be required for group changes to apply."
+}
+
+main "$@"
+EOF
+chmod +x "$PACKAGE_DIR/usr/share/rdx/install-deps.sh"
 
 # OPAM-based installer (PPA-free build)
 cat > "$PACKAGE_DIR/usr/share/rdx/install-liquidsoap-opam.sh" << 'EORDX_OPAM'
