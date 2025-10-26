@@ -1,3 +1,10 @@
+## v3.7.8 (2025-10-26)
+### Fixed
+- Liquidsoap config sanitizer now rewrites any literal `"HOME/..."` in `set("log.file.path", ...)` (whether directory or file) to the canonical form using `getenv("HOME", "")` and normalizes to `~/.config/rdx/liquidsoap.log`.
+
+### Reliability
+- Prevents repeated failures like: `FATAL ERROR: Log directory "HOME/.config/rdx" does not exist.` when older configs used a literal HOME string.
+
 ## v3.7.7 (2025-10-26)
 ### Fixed
 - Liquidsoap startup resilience:
