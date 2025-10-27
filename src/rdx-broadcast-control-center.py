@@ -6092,18 +6092,22 @@ class SettingsTab(QWidget):
         egl.addStretch(1)
         layout.addWidget(enc_group)
 
-        # Populate table from settings or defaults
-        self._init_launch_order_ui()
+    # Populate table from settings or defaults
+    self._init_launch_order_ui()
 
         def do_up():
             r = self.order_table.currentRow()
             if r > 0:
-                self._swap_order_rows(r, r-1)
+                order, delays = self._current_launch_order()
+                order[r-1], order[r] = order[r], order[r-1]
+                self._rebuild_order_table(order, delays)
                 self.order_table.selectRow(r-1)
         def do_down():
             r = self.order_table.currentRow()
             if r >= 0 and r < self.order_table.rowCount()-1:
-                self._swap_order_rows(r, r+1)
+                order, delays = self._current_launch_order()
+                order[r+1], order[r] = order[r], order[r+1]
+                self._rebuild_order_table(order, delays)
                 self.order_table.selectRow(r+1)
         def do_save():
             self._save_launch_order()
@@ -6227,58 +6231,75 @@ WantedBy=default.target
         # ---- Launch order helpers ----
     def _init_launch_order_ui(self):
         try:
-            # Default order
-            order = ['jack', 'stereo_tool', 'liquidsoap', 'icecast']
-            delays = {k: 2 for k in order}
+            # Default order and delays, then merge saved settings
+            default_order = ['jack', 'stereo_tool', 'liquidsoap', 'icecast']
+            delays = {k: 2 for k in default_order}
+            order = list(default_order)
+            services_map = self._services_map()
             if hasattr(self.main, '_settings'):
                 saved_order = self.main._settings.get('service_launch_order')
                 saved_delays = self.main._settings.get('service_delays')
-                # Pull service list from Service Control tab
-                services = getattr(self.main, 'service_control', None)
-                services_map = services.services if services else {}
-                if isinstance(saved_order, list) and all(k in services_map for k in saved_order):
-                    order = saved_order
+                if isinstance(saved_order, list):
+                    # keep only known services, preserve order
+                    order = [k for k in saved_order if k in services_map]
+                    # append any missing known services
+                    for k in default_order:
+                        if k not in order and k in services_map:
+                            order.append(k)
                 if isinstance(saved_delays, dict):
-                    for k,v in saved_delays.items():
+                    for k, v in saved_delays.items():
                         try:
                             delays[k] = int(v)
                         except Exception:
                             pass
-            from PyQt5.QtWidgets import QSpinBox
-            self.order_table.setRowCount(0)
-            for key in order:
-                services = getattr(self.main, 'service_control', None)
-                services_map = services.services if services else {}
-                info = services_map.get(key)
-                if not info: continue
-                r = self.order_table.rowCount(); self.order_table.insertRow(r)
-                self.order_table.setItem(r, 0, QTableWidgetItem(info['name']))
-                spin = QSpinBox(); spin.setRange(0, 60); spin.setValue(int(delays.get(key, 2)))
-                spin.setProperty('service_key', key)
-                self.order_table.setCellWidget(r, 1, spin)
-                # Actions cell: show systemd unit for clarity
-                unit = info.get('systemd') or ''
-                self.order_table.setItem(r, 2, QTableWidgetItem(unit))
+            self._rebuild_order_table(order, delays)
         except Exception:
             pass
 
-    def _swap_order_rows(self, a: int, b: int):
-        try:
-            for col in (0,1,2):
-                if col == 1:
-                    wa = self.order_table.cellWidget(a, col)
-                    wb = self.order_table.cellWidget(b, col)
-                    self.order_table.removeCellWidget(a, col)
-                    self.order_table.removeCellWidget(b, col)
-                    self.order_table.setCellWidget(a, col, wb)
-                    self.order_table.setCellWidget(b, col, wa)
-                else:
-                    ia = self.order_table.takeItem(a, col)
-                    ib = self.order_table.takeItem(b, col)
-                    self.order_table.setItem(a, col, ib)
-                    self.order_table.setItem(b, col, ia)
-        except Exception:
-            pass
+    def _services_map(self):
+        services = getattr(self.main, 'service_control', None)
+        return services.services if services else {}
+
+    def _rebuild_order_table(self, order, delays):
+        from PyQt5.QtWidgets import QSpinBox
+        services_map = self._services_map()
+        self.order_table.setRowCount(0)
+        for key in order:
+            info = services_map.get(key)
+            if not info:
+                continue
+            r = self.order_table.rowCount(); self.order_table.insertRow(r)
+            self.order_table.setItem(r, 0, QTableWidgetItem(info['name']))
+            spin = QSpinBox(); spin.setRange(0, 60); spin.setValue(int(delays.get(key, 2)))
+            spin.setProperty('service_key', key)
+            self.order_table.setCellWidget(r, 1, spin)
+            unit = info.get('systemd') or ''
+            self.order_table.setItem(r, 2, QTableWidgetItem(unit))
+
+    def _current_launch_order(self):
+        # Read current table into an order list and delays mapping
+        order = []
+        delays = {}
+        services_map = self._services_map()
+        from PyQt5.QtWidgets import QSpinBox
+        for r in range(self.order_table.rowCount()):
+            name_item = self.order_table.item(r, 0)
+            spin = self.order_table.cellWidget(r, 1)
+            if not name_item:
+                continue
+            # Map display name back to key
+            key = None
+            for k, info in services_map.items():
+                if info['name'] == name_item.text():
+                    key = k; break
+            if not key:
+                continue
+            order.append(key)
+            if isinstance(spin, QSpinBox):
+                delays[key] = int(spin.value())
+        return order, delays
+
+    # _swap_order_rows removed in favor of robust rebuild-based swapping
 
     def _save_launch_order(self):
         try:
