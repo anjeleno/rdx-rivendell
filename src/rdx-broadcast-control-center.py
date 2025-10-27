@@ -1515,6 +1515,29 @@ class JackMatrixTab(QWidget):
             dp0_has = any(dst == d_ports[0] for (_, dst) in cons)
             dp1_has = any(dst == d_ports[1] for (_, dst) in cons)
             if dp0_has and dp1_has:
+                # Even when RD is connected, ensure VLC is not also auto-connected to system
+                try:
+                    s_ports = self._first_two(ports.get(vlc, {}).get("out", []))
+                    sys1 = None; sys2 = None
+                    for c in ports.keys():
+                        if c.lower().startswith('system'):
+                            outs = ports.get(c, {}).get('in', []) or []
+                            for p in outs:
+                                lp = p.lower()
+                                if lp.endswith('playback_1') or lp.endswith('playback:playback_1'):
+                                    sys1 = f"{c}:{p}" if ':' in p else f"{c}:{p}"
+                                if lp.endswith('playback_2') or lp.endswith('playback:playback_2'):
+                                    sys2 = f"{c}:{p}" if ':' in p else f"{c}:{p}"
+                            break
+                    # Disconnect VLC → system playback if present
+                    if s_ports and sys1:
+                        if (s_ports[0], sys1) in cons:
+                            self._jack_disconnect(s_ports[0], sys1)
+                    if s_ports and sys2:
+                        if (s_ports[1], sys2) in cons:
+                            self._jack_disconnect(s_ports[1], sys2)
+                except Exception:
+                    pass
                 return
 
             # Connect missing pairs best-effort
@@ -1523,6 +1546,25 @@ class JackMatrixTab(QWidget):
                     self._jack_connect(s_ports[0], d_ports[0])
                 if not dp1_has:
                     self._jack_connect(s_ports[1], d_ports[1])
+                # After connecting to RD inputs, proactively disconnect VLC → system playback if autoconnected
+                try:
+                    sys1 = None; sys2 = None
+                    for c in ports.keys():
+                        if c.lower().startswith('system'):
+                            outs = ports.get(c, {}).get('in', []) or []
+                            for p in outs:
+                                lp = p.lower()
+                                if lp.endswith('playback_1') or lp.endswith('playback:playback_1'):
+                                    sys1 = f"{c}:{p}"
+                                if lp.endswith('playback_2') or lp.endswith('playback:playback_2'):
+                                    sys2 = f"{c}:{p}"
+                            break
+                    if sys1 and (s_ports[0], sys1) in cons:
+                        self._jack_disconnect(s_ports[0], sys1)
+                    if sys2 and (s_ports[1], sys2) in cons:
+                        self._jack_disconnect(s_ports[1], sys2)
+                except Exception:
+                    pass
             except Exception:
                 # Ignore; will retry on next tick
                 pass
@@ -3607,7 +3649,7 @@ class ServiceControlTab(QWidget):
         
         layout.addWidget(master_group)
 
-        # Optional tools row
+    # Optional tools row
         tools_row = QHBoxLayout()
         deps_btn = QPushButton("Install Dependencies…")
         deps_btn.setToolTip("Install core services (JACK, Icecast, VLC) and audio permissions")
@@ -3615,24 +3657,8 @@ class ServiceControlTab(QWidget):
         tools_row.addWidget(deps_btn)
         tools_row.addStretch(1)
         layout.addLayout(tools_row)
-        
-        # Service Dependencies Info
-        deps_group = QGroupBox("📊 Service Dependencies")
-        deps_layout = QVBoxLayout(deps_group)
-        
-        deps_text = QLabel("""
-🔗 Service Startup Order:
-1. JACK Audio (Foundation)
-2. Liquidsoap (Stream Generation)
-3. Stereo Tool (Audio Processing)
-4. Icecast (Stream Server)
 
-⚠️ Dependencies: Each service depends on the previous one running correctly.
-        """)
-        deps_text.setStyleSheet("QLabel { background-color: #f8f9fa; padding: 10px; border-radius: 5px; }")
-        deps_layout.addWidget(deps_text)
-        
-        layout.addWidget(deps_group)
+    # Removed the static "Service Dependencies" info block to give the log/status area more room
         
         # Liquidsoap Log Viewer
         log_group = QGroupBox("📄 Liquidsoap Log (latest 500 lines)")
@@ -5438,12 +5464,18 @@ verify
             # Encoder wait: prefer dedicated helper if installed; else fallback to inline grep loop (soft)
             enc_wait = "/usr/local/bin/encoder-wait-ready.sh"
             has_enc_wait = os.path.isfile(enc_wait) and os.access(enc_wait, os.X_OK)
+            # Respect user preference for active encoder if set
+            enc_name = (self._active_encoder_preference() or '').strip().lower()
+            if enc_name in ("liquidsoap","darkice","butt","glasscoder"):
+                enc_regex = enc_name
+            else:
+                enc_regex = "liquidsoap|darkice|butt|glasscoder"
             if has_enc_wait:
                 pre_enc = f"ExecStartPre={enc_wait} --timeout 30\n"
             else:
                 pre_enc = (
                     "ExecStartPre=/bin/bash -lc 'for i in $(seq 1 60); do "
-                    "jack_lsp -p 2>/dev/null | grep -qiE \"^(liquidsoap|darkice|butt|glasscoder)[:]\" && exit 0; "
+                    f"jack_lsp -p 2>/dev/null | grep -qiE \"^({enc_regex})[:]\" && exit 0; "
                     "sleep 0.5; done; echo \"[rdx] encoder not detected within 30s (continuing)\" >&2; exit 0'\n"
                 )
             unit = f"""[Unit]
@@ -5468,6 +5500,22 @@ WantedBy=default.target
         except Exception:
             # Non-fatal; Service Control will still allow manual start attempts
             pass
+
+    def _active_encoder_preference(self) -> str:
+        """Read user's preferred active encoder from settings.json.
+        Returns one of: 'liquidsoap','darkice','butt','glasscoder' or ''.
+        """
+        try:
+            sp = Path.home() / ".config" / "rdx" / "settings.json"
+            if sp.exists():
+                with open(sp, 'r') as f:
+                    data = json.load(f)
+                val = str(data.get('active_encoder', '')).lower()
+                if val in ("liquidsoap","darkice","butt","glasscoder"):
+                    return val
+        except Exception:
+            pass
+        return ""
 
         # ---- Liquidsoap user-service helper (systemd user unit) ----
     def _ensure_liquidsoap_unit(self, liq_bin: str, config_file: Path):
@@ -5883,9 +5931,21 @@ class StereoToolManagerTab(QWidget):
             if os.path.isfile("/usr/local/bin/encoder-wait-ready.sh") and os.access("/usr/local/bin/encoder-wait-ready.sh", os.X_OK):
                 pre_enc = "ExecStartPre=/usr/local/bin/encoder-wait-ready.sh --timeout 30\n"
             else:
+                # Respect active encoder setting if present
+                try:
+                    sp = Path.home() / ".config" / "rdx" / "settings.json"
+                    enc_regex = "liquidsoap|darkice|butt|glasscoder"
+                    if sp.exists():
+                        with open(sp, 'r') as f:
+                            data = json.load(f)
+                        val = str(data.get('active_encoder','')).lower()
+                        if val in ("liquidsoap","darkice","butt","glasscoder"):
+                            enc_regex = val
+                except Exception:
+                    enc_regex = "liquidsoap|darkice|butt|glasscoder"
                 pre_enc = (
                     "ExecStartPre=/bin/bash -lc 'for i in $(seq 1 60); do "
-                    "jack_lsp -p 2>/dev/null | grep -qiE \"^(liquidsoap|darkice|butt|glasscoder)[:]\" && exit 0; "
+                    f"jack_lsp -p 2>/dev/null | grep -qiE \"^({enc_regex})[:]\" && exit 0; "
                     "sleep 0.5; done; echo \"[rdx] encoder not detected within 30s (continuing)\" >&2; exit 0'\n"
                 )
             unit = f"""[Unit]
@@ -5993,7 +6053,7 @@ class SettingsTab(QWidget):
         gl.addWidget(btn_stop, 2, 2)
         layout.addWidget(auto_group)
 
-        # Launch Order & Timing
+    # Launch Order & Timing
         order_group = QGroupBox("🚦 Launch Order & Timing")
         ol = QVBoxLayout(order_group)
         from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem
@@ -6012,6 +6072,25 @@ class SettingsTab(QWidget):
         btn_row.addWidget(btn_save); btn_row.addWidget(btn_start)
         ol.addLayout(btn_row)
         layout.addWidget(order_group)
+
+        # Encoders preferences
+        enc_group = QGroupBox("🎚️ Encoders")
+        egl = QHBoxLayout(enc_group)
+        from PyQt5.QtWidgets import QComboBox
+        egl.addWidget(QLabel("Active encoder:"))
+        self.encoder_combo = QComboBox()
+        self.encoder_combo.addItems(["liquidsoap", "darkice", "butt", "glasscoder"]) 
+        # Load saved preference
+        try:
+            val = str(self.main._settings.get('active_encoder', 'liquidsoap'))
+        except Exception:
+            val = 'liquidsoap'
+        idx = max(0, self.encoder_combo.findText(val))
+        self.encoder_combo.setCurrentIndex(idx)
+        self.encoder_combo.currentTextChanged.connect(self._save_active_encoder)
+        egl.addWidget(self.encoder_combo)
+        egl.addStretch(1)
+        layout.addWidget(enc_group)
 
         # Populate table from settings or defaults
         self._init_launch_order_ui()
@@ -6154,7 +6233,10 @@ WantedBy=default.target
             if hasattr(self.main, '_settings'):
                 saved_order = self.main._settings.get('service_launch_order')
                 saved_delays = self.main._settings.get('service_delays')
-                if isinstance(saved_order, list) and all(k in self.services for k in saved_order):
+                # Pull service list from Service Control tab
+                services = getattr(self.main, 'service_control', None)
+                services_map = services.services if services else {}
+                if isinstance(saved_order, list) and all(k in services_map for k in saved_order):
                     order = saved_order
                 if isinstance(saved_delays, dict):
                     for k,v in saved_delays.items():
@@ -6165,7 +6247,9 @@ WantedBy=default.target
             from PyQt5.QtWidgets import QSpinBox
             self.order_table.setRowCount(0)
             for key in order:
-                info = self.services.get(key)
+                services = getattr(self.main, 'service_control', None)
+                services_map = services.services if services else {}
+                info = services_map.get(key)
                 if not info: continue
                 r = self.order_table.rowCount(); self.order_table.insertRow(r)
                 self.order_table.setItem(r, 0, QTableWidgetItem(info['name']))
@@ -6206,7 +6290,9 @@ WantedBy=default.target
                 spin = self.order_table.cellWidget(r,1)
                 # Map display name back to key
                 key = None
-                for k, info in self.services.items():
+                services = getattr(self.main, 'service_control', None)
+                services_map = services.services if services else {}
+                for k, info in services_map.items():
                     if info['name'] == name_item.text():
                         key = k; break
                 if key is None: continue
@@ -6220,6 +6306,18 @@ WantedBy=default.target
             QMessageBox.information(self, "Saved", "Launch order and delays saved.")
         except Exception as e:
             QMessageBox.warning(self, "Save Failed", f"Could not save order: {e}")
+
+    def _save_active_encoder(self, text: str):
+        try:
+            self.main._settings['active_encoder'] = text
+            self.main.save_settings()
+            # Optional: refresh Stereo Tool unit so encoder-wait prefers the selected encoder
+            try:
+                self.main.service_control._ensure_stereotool_unit()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _start_services_in_order(self):
         try:
@@ -6307,9 +6405,10 @@ class RDXBroadcastControlCenter(QMainWindow):
         self.icecast_management = IcecastManagementTab()
         self.tab_widget.addTab(self.icecast_management, "📡 Icecast Management")
         
-        # Add remaining tabs
-        self.jack_matrix = JackMatrixTab(self)
-        self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
+    # Add remaining tabs
+    # Hide the legacy Patchboard tab (kept in code for future use)
+    # self.jack_matrix = JackMatrixTab(self)
+    # self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
 
         # Visual Graph (preview)
         try:

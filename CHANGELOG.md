@@ -1,3 +1,16 @@
+## v3.7.14 (2025-10-26)
+### UX
+- Encoders preference: Added Settings → Encoders to choose the active encoder (Liquidsoap/DarkIce/BUTT/GlassCoder). Preference is saved and used for Stereo Tool startup sequencing.
+- Service Control: Removed the static “Service Dependencies” info block to free space for the dynamic status/log area.
+- Tabs: Hid the legacy “JACK Patchboard” tab from the UI (kept in code for future resurfacing). The “JACK Graph” now serves as the primary patching view.
+
+### Reliability
+- VLC auto-routing: The graph watcher now connects VLC → Rivendell Record‑In without also leaving VLC → system:playback_1/2 attached. Any stray VLC→system playback connections are proactively dropped to avoid duplicate monitoring.
+- Encoder sequencing: Stereo Tool’s unit honors the user’s chosen active encoder when the encoder‑wait helper isn’t present, preferring that client during soft‑wait.
+
+### Notes
+- Manual launch ordering remains available in Settings → Launch Order & Timing. It now correctly lists services again and persists per‑service delays.
+
 ## v3.7.13 (2025-10-26)
 ### Fixed
 - Stereo Tool auto-start reliability: Correctly invoke JACK readiness helper with `--timeout 30` and add a robust inline fallback when the helper is missing. This resolves `jack-wait-ready.sh: Unknown arg: 30` and restart loops at login.
