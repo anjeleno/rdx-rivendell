@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.15
+RDX Professional Broadcast Control Center v3.7.16
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -5180,8 +5180,8 @@ verify
         form = QFormLayout(dlg)
 
         # Manage toggle
-    manage_cb = QCheckBox("Let RDX manage the JACK server")
-    manage_cb.setChecked(self.jack_settings.get("manage", False))
+        manage_cb = QCheckBox("Let RDX manage the JACK server")
+        manage_cb.setChecked(self.jack_settings.get("manage", False))
         form.addRow("Management:", manage_cb)
 
         # Autostart toggle
@@ -6384,7 +6384,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.15")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.16")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6453,7 +6453,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.15")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.16")
 
         # ---- System tray ----
     def _setup_tray(self):
