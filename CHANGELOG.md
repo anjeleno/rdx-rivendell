@@ -1,3 +1,10 @@
+## v3.7.15 (2025-10-26)
+### Fixed
+- Settings: Moving services up/down in Launch Order & Timing could crash due to in-place row swaps. Now uses a safe rebuild of the table based on the current order and delays.
+
+### Notes
+- No functional changes beyond the crash fix. Encoder preference, Patchboard hiding, and VLC auto-connect behavior from 3.7.14 remain unchanged.
+
 ## v3.7.14 (2025-10-26)
 ### UX
 - Encoders preference: Added Settings → Encoders to choose the active encoder (Liquidsoap/DarkIce/BUTT/GlassCoder). Preference is saved and used for Stereo Tool startup sequencing.
