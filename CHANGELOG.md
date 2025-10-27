@@ -1,3 +1,14 @@
+## v3.7.13 (2025-10-27)
+### Fixed
+- Stereo Tool auto-start reliability: Correctly invoke JACK readiness helper with `--timeout 30` and add a robust inline fallback when the helper is missing. This resolves `jack-wait-ready.sh: Unknown arg: 30` and restart loops at login.
+- Encoder sequencing: Stereo Tool unit now soft-waits for an encoder JACK client (Liquidsoap/DarkIce/BUTT/GlassCoder) via `/usr/local/bin/encoder-wait-ready.sh --timeout 30` when available, or a safe grep loop otherwise.
+
+### UX
+- Stereo Tool Manager now writes the same readiness-gated user unit as Services and uses non-blocking `systemctl` calls for Start/Stop, improving responsiveness parity with the Services tab.
+
+### Scope
+- No changes to Liquidsoap; continues to log via stdout with systemd append.
+
 ## v3.7.12 (2025-10-26)
 ### Logging: Liquidsoap HOME path hardening
 - Sanitizer now aggressively removes or disables any `log.file` / `log.file.path` directives, tolerating trailing comments and varied spacing/quoting.

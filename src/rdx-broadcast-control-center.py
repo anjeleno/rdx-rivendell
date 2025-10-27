@@ -5426,10 +5426,15 @@ verify
             unit_dir.mkdir(parents=True, exist_ok=True)
             unit_path = unit_dir / "rdx-stereotool-active.service"
             # Minimal ExecStart with readiness gates; Stereo Tool JACK GUI typically self-manages JACK ports
-            # Prefer installed JACK readiness helper if present
-            jack_wait = "/usr/local/bin/jack-wait-ready.sh"
-            has_jack_wait = os.path.isfile(jack_wait) and os.access(jack_wait, os.X_OK)
-            pre_jack = f"ExecStartPre={jack_wait} 30\n" if has_jack_wait else ""
+            # JACK readiness: prefer helper if present, else inline loop (same contract as Liquidsoap unit)
+            pre_jack_cmd = (
+                "if [ -x /usr/local/bin/jack-wait-ready.sh ]; then "
+                "/usr/local/bin/jack-wait-ready.sh --timeout 30; "
+                "else "
+                "for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1; "
+                "fi"
+            )
+            pre_jack = f"ExecStartPre=/usr/bin/env bash -lc \"{pre_jack_cmd}\"\n"
             # Encoder wait: prefer dedicated helper if installed; else fallback to inline grep loop (soft)
             enc_wait = "/usr/local/bin/encoder-wait-ready.sh"
             has_enc_wait = os.path.isfile(enc_wait) and os.access(enc_wait, os.X_OK)
@@ -5861,19 +5866,28 @@ class StereoToolManagerTab(QWidget):
                 except Exception:
                     pass
             os.symlink(str(target), str(link))
-            # Ensure the per-user unit is created/updated
-            try:
-                # Reuse helper from ServiceControlTab if available
-                parent = self.parent()
-                while parent and not isinstance(parent, ServiceControlTab):
-                    parent = parent.parent()
-                # Even if not found, we can write the unit here too
-            except Exception:
-                pass
-            # Write unit file
+            # Write unit file (with readiness gates consistent with Service Control)
             unit_dir = Path.home() / ".config" / "systemd" / "user"
             unit_dir.mkdir(parents=True, exist_ok=True)
             unit_path = unit_dir / "rdx-stereotool-active.service"
+            # JACK readiness gate
+            pre_jack_cmd = (
+                "if [ -x /usr/local/bin/jack-wait-ready.sh ]; then "
+                "/usr/local/bin/jack-wait-ready.sh --timeout 30; "
+                "else "
+                "for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1; "
+                "fi"
+            )
+            pre_jack = f"ExecStartPre=/usr/bin/env bash -lc \"{pre_jack_cmd}\"\n"
+            # Encoder readiness (soft wait)
+            if os.path.isfile("/usr/local/bin/encoder-wait-ready.sh") and os.access("/usr/local/bin/encoder-wait-ready.sh", os.X_OK):
+                pre_enc = "ExecStartPre=/usr/local/bin/encoder-wait-ready.sh --timeout 30\n"
+            else:
+                pre_enc = (
+                    "ExecStartPre=/bin/bash -lc 'for i in $(seq 1 60); do "
+                    "jack_lsp -p 2>/dev/null | grep -qiE \"^(liquidsoap|darkice|butt|glasscoder)[:]\" && exit 0; "
+                    "sleep 0.5; done; echo \"[rdx] encoder not detected within 30s (continuing)\" >&2; exit 0'\n"
+                )
             unit = f"""[Unit]
 Description=RDX Stereo Tool (active instance)
 After=default.target
@@ -5881,7 +5895,7 @@ Wants=default.target
 
 [Service]
 Type=simple
-ExecStart={str(link)}
+{pre_jack}{pre_enc}ExecStart={str(link)}
 Restart=on-failure
 RestartSec=2
 
@@ -5902,13 +5916,13 @@ WantedBy=default.target
             unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-stereotool-active.service"
             if not unit_path.exists():
                 self.activate(idx)
-            subprocess.run(["systemctl", "--user", "start", "rdx-stereotool-active"], check=False)
+            subprocess.run(["systemctl", "--user", "start", "rdx-stereotool-active", "--no-block"], check=False)
         except Exception as e:
             QMessageBox.critical(self, "Start Error", f"Failed to start: {e}")
 
     def stop(self, idx: int):
         try:
-            subprocess.run(["systemctl", "--user", "stop", "rdx-stereotool-active"], check=False)
+            subprocess.run(["systemctl", "--user", "stop", "rdx-stereotool-active", "--no-block"], check=False)
         except Exception as e:
             QMessageBox.critical(self, "Stop Error", f"Failed to stop: {e}")
 
