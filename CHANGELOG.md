@@ -1,3 +1,13 @@
+## v4.0.1 (2025-10-26)
+### UI
+- Stream Builder: Made "Generate Liquidsoap Config" and "Apply to Icecast" buttons consistent in size and style with Icecast Management's action buttons.
+
+### Features
+- Settings → Encoders: Added "Install Encoders…" dialog to choose and install one or more stream encoders (Liquidsoap, DarkIce, BUTT, GlassCoder) using the system package manager with live logs. After install, the app offers to switch the active encoder if the previous one isn’t available.
+
+### Notes
+- GlassCoder availability depends on your distro; the dialog notes when a manual/source build may be required.
+
 ## v4.0.0 (2025-10-27)
 ### Added
 - Settings → Backup & Restore: Export all RDX settings to a single .zip and import them later.

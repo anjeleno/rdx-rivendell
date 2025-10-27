@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v4.0.0
+RDX Professional Broadcast Control Center v4.0.1
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -86,15 +86,15 @@ class StreamBuilderTab(QWidget):
         # Actions (Generate/Apply)
         actions_row = QHBoxLayout()
         gen_btn = QPushButton("🔧 Generate Liquidsoap Config")
-        gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
-        gen_btn.setMinimumHeight(40)
+        gen_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 10px; font-size: 14px; }")
+        gen_btn.setMinimumHeight(44)
         gen_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         gen_btn.clicked.connect(self.generate_liquidsoap_config)
         actions_row.addWidget(gen_btn)
 
         apply_btn = QPushButton("📡 Apply to Icecast")
-        apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
-        apply_btn.setMinimumHeight(40)
+        apply_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 10px; font-size: 14px; }")
+        apply_btn.setMinimumHeight(44)
         apply_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         apply_btn.clicked.connect(self.apply_to_icecast)
         actions_row.addWidget(apply_btn)
@@ -480,15 +480,15 @@ class IcecastManagementTab(QWidget):
         config_layout = QHBoxLayout(config_group)
 
         generate_config_btn = QPushButton("🔧 GENERATE ICECAST.XML")
-        generate_config_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 8px; }")
-        generate_config_btn.setMinimumHeight(40)
+        generate_config_btn.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; padding: 10px; font-size: 14px; }")
+        generate_config_btn.setMinimumHeight(44)
         generate_config_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         generate_config_btn.clicked.connect(self.generate_icecast_config)
         config_layout.addWidget(generate_config_btn)
         
-        apply_config_btn = QPushButton("� PREPARE FOR DEPLOYMENT")
-        apply_config_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 8px; }")
-        apply_config_btn.setMinimumHeight(40)
+        apply_config_btn = QPushButton("🚀 PREPARE FOR DEPLOYMENT")
+        apply_config_btn.setStyleSheet("QPushButton { background-color: #27ae60; color: white; font-weight: bold; padding: 10px; font-size: 14px; }")
+        apply_config_btn.setMinimumHeight(44)
         apply_config_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         apply_config_btn.clicked.connect(self.apply_icecast_config)
         config_layout.addWidget(apply_config_btn)
@@ -6089,6 +6089,11 @@ class SettingsTab(QWidget):
         self.encoder_combo.setCurrentIndex(idx)
         self.encoder_combo.currentTextChanged.connect(self._save_active_encoder)
         egl.addWidget(self.encoder_combo)
+        # Installer for encoders
+        btn_install_codecs = QPushButton("📦 Install Encoders…")
+        btn_install_codecs.setToolTip("Choose and install Liquidsoap, DarkIce, BUTT, and GlassCoder")
+        btn_install_codecs.clicked.connect(self.open_encoder_installer)
+        egl.addWidget(btn_install_codecs)
         egl.addStretch(1)
         layout.addWidget(enc_group)
 
@@ -6607,13 +6612,124 @@ WantedBy=default.target
         except Exception as e:
             QMessageBox.critical(self, "Import Failed", f"Could not import settings: {e}")
 
+    def open_encoder_installer(self):
+        """Open a dialog to select and install one or more encoders (Liquidsoap, DarkIce, BUTT, GlassCoder)."""
+        try:
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QLabel, QPushButton, QTextEdit
+            from PyQt5.QtCore import QProcess
+            import shutil as _shutil
+
+            def is_installed(cmd: str) -> bool:
+                try:
+                    return _shutil.which(cmd) is not None
+                except Exception:
+                    return False
+
+            encoders = [
+                {"name": "Liquidsoap", "cmd": "liquidsoap", "pkg": "liquidsoap"},
+                {"name": "DarkIce", "cmd": "darkice", "pkg": "darkice"},
+                {"name": "BUTT", "cmd": "butt", "pkg": "butt"},
+                {"name": "GlassCoder", "cmd": "glasscoder", "pkg": "glasscoder"},
+            ]
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Install Stream Encoders…")
+            v = QVBoxLayout(dlg)
+
+            rows = []
+            for e in encoders:
+                h = QHBoxLayout()
+                cb = QCheckBox(e["name"])
+                installed = is_installed(e["cmd"])
+                cb.setChecked(not installed)
+                h.addWidget(cb)
+                status = QLabel("✅ Installed" if installed else "❌ Missing")
+                h.addWidget(status)
+                h.addStretch(1)
+                v.addLayout(h)
+                rows.append((e, cb, status))
+
+            note = QLabel("Packages will be installed using your system package manager (requires admin).\nGlassCoder may require building from source if not in your repos.")
+            v.addWidget(note)
+
+            log = QTextEdit(); log.setReadOnly(True); log.setMinimumSize(600, 280)
+            v.addWidget(log)
+
+            bh = QHBoxLayout()
+            btn_install = QPushButton("Install Selected")
+            btn_close = QPushButton("Close")
+            bh.addStretch(1)
+            bh.addWidget(btn_install)
+            bh.addWidget(btn_close)
+            v.addLayout(bh)
+
+            proc = QProcess(dlg)
+            proc.setProcessChannelMode(QProcess.MergedChannels)
+
+            def append_output():
+                data = proc.readAll().data().decode(errors="replace")
+                if data:
+                    log.append(data.rstrip())
+
+            proc.readyRead.connect(append_output)
+
+            def do_install():
+                pkgs = []
+                for e, cb, _st in rows:
+                    if cb.isChecked():
+                        pkgs.append(e["pkg"])
+                if not pkgs:
+                    log.append("No encoders selected.")
+                    return
+                if _shutil.which("apt-get"):
+                    cmd = ["pkexec", "/bin/bash", "-lc", f"DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends {' '.join(pkgs)}"]
+                elif _shutil.which("yum"):
+                    cmd = ["pkexec", "/bin/bash", "-lc", f"yum install -y {' '.join(pkgs)}"]
+                else:
+                    log.append("Unsupported package manager. Please install encoders manually.")
+                    return
+                log.append(f"Installing: {' '.join(pkgs)}\n")
+                proc.setProgram(cmd[0])
+                proc.setArguments(cmd[1:])
+                proc.start()
+
+            def on_finished(_code, _status):
+                for e, _cb, st in rows:
+                    inst = is_installed(e["cmd"])
+                    st.setText("✅ Installed" if inst else "❌ Missing")
+                try:
+                    current = str(self.main._settings.get('active_encoder', 'liquidsoap'))
+                    if not is_installed(current):
+                        for pref in ["liquidsoap", "darkice", "butt", "glasscoder"]:
+                            if is_installed(pref):
+                                self.main._settings['active_encoder'] = pref
+                                idx = max(0, self.encoder_combo.findText(pref))
+                                self.encoder_combo.setCurrentIndex(idx)
+                                break
+                        try:
+                            self.main._save_settings()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            proc.finished.connect(on_finished)
+            btn_install.clicked.connect(do_install)
+            btn_close.clicked.connect(dlg.accept)
+            dlg.exec_()
+        except Exception as e:
+            try:
+                QMessageBox.warning(self, "Installer", f"Could not open encoder installer: {e}")
+            except Exception:
+                pass
+
 
 class RDXBroadcastControlCenter(QMainWindow):
     """Main application window with tabbed interface"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v4.0.0")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v4.0.1")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6682,7 +6798,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v4.0.0")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v4.0.1")
 
         # ---- System tray ----
     def _setup_tray(self):
