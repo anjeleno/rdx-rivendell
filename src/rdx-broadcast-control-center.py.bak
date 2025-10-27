@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.8
+RDX Professional Broadcast Control Center v3.7.15
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -281,9 +281,9 @@ class StreamBuilderTab(QWidget):
         """Build Liquidsoap configuration string"""
         config = '''#!/usr/bin/liquidsoap
 
-# Log to user config directory so the in-app log viewer can read it
-set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")
-set("log.file", true)
+# Prefer stdout logging; RDX user service appends stdout/stderr to ~/.config/rdx/liquidsoap.log
+set("log.stdout", true)
+set("log.file", false)
 
 # Set sample rate to 48kHz
 set("frame.audio.samplerate", 48000)
@@ -1515,6 +1515,29 @@ class JackMatrixTab(QWidget):
             dp0_has = any(dst == d_ports[0] for (_, dst) in cons)
             dp1_has = any(dst == d_ports[1] for (_, dst) in cons)
             if dp0_has and dp1_has:
+                # Even when RD is connected, ensure VLC is not also auto-connected to system
+                try:
+                    s_ports = self._first_two(ports.get(vlc, {}).get("out", []))
+                    sys1 = None; sys2 = None
+                    for c in ports.keys():
+                        if c.lower().startswith('system'):
+                            outs = ports.get(c, {}).get('in', []) or []
+                            for p in outs:
+                                lp = p.lower()
+                                if lp.endswith('playback_1') or lp.endswith('playback:playback_1'):
+                                    sys1 = f"{c}:{p}" if ':' in p else f"{c}:{p}"
+                                if lp.endswith('playback_2') or lp.endswith('playback:playback_2'):
+                                    sys2 = f"{c}:{p}" if ':' in p else f"{c}:{p}"
+                            break
+                    # Disconnect VLC → system playback if present
+                    if s_ports and sys1:
+                        if (s_ports[0], sys1) in cons:
+                            self._jack_disconnect(s_ports[0], sys1)
+                    if s_ports and sys2:
+                        if (s_ports[1], sys2) in cons:
+                            self._jack_disconnect(s_ports[1], sys2)
+                except Exception:
+                    pass
                 return
 
             # Connect missing pairs best-effort
@@ -1523,6 +1546,25 @@ class JackMatrixTab(QWidget):
                     self._jack_connect(s_ports[0], d_ports[0])
                 if not dp1_has:
                     self._jack_connect(s_ports[1], d_ports[1])
+                # After connecting to RD inputs, proactively disconnect VLC → system playback if autoconnected
+                try:
+                    sys1 = None; sys2 = None
+                    for c in ports.keys():
+                        if c.lower().startswith('system'):
+                            outs = ports.get(c, {}).get('in', []) or []
+                            for p in outs:
+                                lp = p.lower()
+                                if lp.endswith('playback_1') or lp.endswith('playback:playback_1'):
+                                    sys1 = f"{c}:{p}"
+                                if lp.endswith('playback_2') or lp.endswith('playback:playback_2'):
+                                    sys2 = f"{c}:{p}"
+                            break
+                    if sys1 and (s_ports[0], sys1) in cons:
+                        self._jack_disconnect(s_ports[0], sys1)
+                    if sys2 and (s_ports[1], sys2) in cons:
+                        self._jack_disconnect(s_ports[1], sys2)
+                except Exception:
+                    pass
             except Exception:
                 # Ignore; will retry on next tick
                 pass
@@ -3607,7 +3649,7 @@ class ServiceControlTab(QWidget):
         
         layout.addWidget(master_group)
 
-        # Optional tools row
+    # Optional tools row
         tools_row = QHBoxLayout()
         deps_btn = QPushButton("Install Dependencies…")
         deps_btn.setToolTip("Install core services (JACK, Icecast, VLC) and audio permissions")
@@ -3615,24 +3657,8 @@ class ServiceControlTab(QWidget):
         tools_row.addWidget(deps_btn)
         tools_row.addStretch(1)
         layout.addLayout(tools_row)
-        
-        # Service Dependencies Info
-        deps_group = QGroupBox("📊 Service Dependencies")
-        deps_layout = QVBoxLayout(deps_group)
-        
-        deps_text = QLabel("""
-🔗 Service Startup Order:
-1. JACK Audio (Foundation)
-2. Liquidsoap (Stream Generation)
-3. Stereo Tool (Audio Processing)
-4. Icecast (Stream Server)
 
-⚠️ Dependencies: Each service depends on the previous one running correctly.
-        """)
-        deps_text.setStyleSheet("QLabel { background-color: #f8f9fa; padding: 10px; border-radius: 5px; }")
-        deps_layout.addWidget(deps_text)
-        
-        layout.addWidget(deps_group)
+    # Removed the static "Service Dependencies" info block to give the log/status area more room
         
         # Liquidsoap Log Viewer
         log_group = QGroupBox("📄 Liquidsoap Log (latest 500 lines)")
@@ -4473,17 +4499,29 @@ WantedBy=default.target
                 except Exception:
                     pass
 
-                # Ensure config has file logging configured for Liquidsoap 2.x
+                # Always run a light sanitizer before parse-check.
+                # Rationale: literal "HOME/..." in log.file.path is syntactically valid, so -c succeeds
+                # but then Liquidsoap fails at runtime with: Log directory "HOME/.config/rdx" does not exist.
+                # Sanitizing preemptively fixes this without relying on a parse error.
+                try:
+                    self.sanitize_liquidsoap_config(config_file)
+                except Exception:
+                    pass
+
+                # Ensure config logs to stdout (systemd appends stdout/err to our file),
+                # disabling Liquidsoap-managed file logging to avoid HOME-literal path issues.
                 try:
                     if config_file.exists():
                         cfg_txt = config_file.read_text(encoding="utf-8", errors="ignore")
-                        need_path = 'set("log.file.path"' not in cfg_txt
-                        need_enable = 'set("log.file",' not in cfg_txt
-                        if need_path or need_enable:
+                        need_stdout = 'set("log.stdout"' not in cfg_txt and 'log.stdout :=' not in cfg_txt
+                        # Always disable Liquidsoap file logging; unit redirects stdout/stderr to our logfile
+                        # to avoid runtime errors from literal HOME paths.
+                        need_disable_file = True  # we will prefix a guard to set log.file=false
+                        if need_stdout or need_disable_file:
                             cfg_prefix = (
-                                '# Auto-injected by RDX to ensure logfile is written for GUI log viewer\n'
-                                'set("log.file", true)\n'
-                                f'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")\n'
+                                '# Auto-injected by RDX: prefer stdout logging; systemd appends to ~/.config/rdx/liquidsoap.log\n'
+                                'set("log.stdout", true)\n'
+                                'set("log.file", false)\n'
                             )
                             # Place at top, but after a shebang if present
                             if cfg_txt.startswith("#!/"):
@@ -4697,6 +4735,12 @@ WantedBy=default.target
                                                      "No AAC encoder is available (fdkaac or ffmpeg).\n\n"
                                                      "Options: Use MP3-only streams for now, or install Liquidsoap via OPAM for AAC support.")
                                 return
+                except Exception:
+                    pass
+
+                # Pre-sanitize before parse-check for the same reason as Start: fix runtime-only issues like literal HOME paths
+                try:
+                    self.sanitize_liquidsoap_config(config_file)
                 except Exception:
                     pass
 
@@ -4974,20 +5018,34 @@ verify
             new = re.sub(r'^#!.*\n', '', new, count=1)
         # Fix getenv signature for Liquidsoap 2.x: require default argument
         new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
-        # Fix literal HOME paths (directory or file) accidentally set as a string
-        # Examples we rewrite:
-        #   set("log.file.path", "HOME/.config/rdx")
-        #   set("log.file.path", "HOME/.config/rdx/")
-        #   set("log.file.path", "HOME/.config/rdx/liquidsoap.log")
-        # We normalize to a file path at ~/.config/rdx/liquidsoap.log
-        new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
+        # Prefer stdout logging and disable Liquidsoap-managed file logging to avoid HOME-literal path issues.
+        if 'set("log.stdout"' not in new and 'log.stdout :=' not in new:
+            # Insert stdout logging at top (after shebang if present)
+            inject = 'set("log.stdout", true)\nset("log.file", false)\n'
+            if new.startswith("#!/"):
+                first_nl = new.find("\n")
+                if first_nl != -1:
+                    new = new[:first_nl+1] + inject + new[first_nl+1:]
+                else:
+                    new = inject + new
+            else:
+                new = inject + new
+
+        # Remove/neutralize any explicit file logging directives anywhere (robust against trailing comments)
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file(?:\.path)?["\']\s*,.*$', '', new)
+        new = re.sub(r'(?mi)^\s*log\.file(?:\.path)?\s*:=\s*.*$', '', new)
+        # Also ensure any plain set("log.file", true/false) occurrences are disabled
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*(?:#.*)?$', 'set("log.file", false)', new)
+        new = re.sub(r'(?mi)^\s*log\.file\s*:=\s*(true|false)\s*(?:#.*)?$', 'set("log.file", false)', new)
+
+        # As a fallback, if any literal HOME path assignments for log.file.path remain, rewrite to canonical getenv form
+        new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
                      'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Ensure log.file is enabled when we set a file path
-        if 'log.file.path' in new and 'set("log.file"' not in new:
-            # Insert right after the log.file.path line when possible
-            new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
-            if 'set("log.file"' not in new:
-                new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
+        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
+
+        # Tidy any excess blank lines after removals
+        new = re.sub(r'\n{3,}', '\n\n', new)
 
         # Ensure ffmpeg encoder is marked as audio to avoid type errors in 2.x
         # Insert audio=true, video=false if not already present
@@ -5017,16 +5075,33 @@ verify
         # Remove shebang if present; ensure file is parseable by liquidsoap -c
         if new.startswith("#!/"):
             new = re.sub(r'^#!.*\n', '', new, count=1)
-    # Fix getenv signature for Liquidsoap 2.x
-    new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
-    # Replace any literal HOME paths for log.file.path (directory or file) with canonical getenv usage
-    new = re.sub(r'set\(\s*"log\.file\.path"\s*,\s*"HOME(?:/[^"\)]*)?"\s*\)\s*',
-             'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
-        # Ensure log.file is enabled when a file path is set
-        if 'log.file.path' in new and 'set("log.file"' not in new:
-            new = re.sub(r'(?m)^(\s*set\("log\.file\.path".*\)\s*)$', r"\1\nset(\"log.file\", true)", new)
-            if 'set("log.file"' not in new:
-                new = new.replace('set("log.file.path"', 'set("log.file", true)\nset("log.file.path"', 1)
+        # Fix getenv signature for Liquidsoap 2.x
+        new = re.sub(r'getenv\(\s*["\']HOME["\']\s*\)', 'getenv("HOME", "")', new)
+        # Prefer stdout logging; ensure file logging is disabled
+        if 'set("log.stdout"' not in new and 'log.stdout :=' not in new:
+            inject = 'set("log.stdout", true)\nset("log.file", false)\n'
+            if new.startswith("#!/"):
+                first_nl = new.find("\n")
+                if first_nl != -1:
+                    new = new[:first_nl+1] + inject + new[first_nl+1:]
+                else:
+                    new = inject + new
+            else:
+                new = inject + new
+        # Remove/neutralize any explicit file logging directives anywhere (robust against trailing comments)
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file(?:\.path)?["\']\s*,.*$', '', new)
+        new = re.sub(r'(?mi)^\s*log\.file(?:\.path)?\s*:=\s*.*$', '', new)
+        new = re.sub(r'(?mi)^\s*set\(\s*["\']log\.file["\']\s*,\s*(true|false)\s*\)\s*(?:#.*)?$', 'set("log.file", false)', new)
+        new = re.sub(r'(?mi)^\s*log\.file\s*:=\s*(true|false)\s*(?:#.*)?$', 'set("log.file", false)', new)
+
+        # Rewrite any lingering HOME literal paths to canonical form (no-op if file logging remains disabled)
+        new = re.sub(r'set\(\s*["\']log\.file\.path["\']\s*,\s*["\']HOME(?:/[^"\')]*)?["\']\s*\)\s*',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
+        new = re.sub(r'(?m)^\s*log\.file\.path\s*:=\s*["\']HOME(?:/[^"\')]*)?["\']\s*$',
+                     'set("log.file.path", getenv("HOME", "") ^ "/.config/rdx/liquidsoap.log")', new)
+
+        # Tidy blank lines
+        new = re.sub(r'\n{3,}', '\n\n', new)
 
         # Ensure audio flags present
         new = re.sub(r'%ffmpeg\((?![^)]*\baudio\s*=)', r'%ffmpeg(audio=true, video=false, ', new)
@@ -5377,19 +5452,30 @@ verify
             unit_dir.mkdir(parents=True, exist_ok=True)
             unit_path = unit_dir / "rdx-stereotool-active.service"
             # Minimal ExecStart with readiness gates; Stereo Tool JACK GUI typically self-manages JACK ports
-            # Prefer installed JACK readiness helper if present
-            jack_wait = "/usr/local/bin/jack-wait-ready.sh"
-            has_jack_wait = os.path.isfile(jack_wait) and os.access(jack_wait, os.X_OK)
-            pre_jack = f"ExecStartPre={jack_wait} 30\n" if has_jack_wait else ""
+            # JACK readiness: prefer helper if present, else inline loop (same contract as Liquidsoap unit)
+            pre_jack_cmd = (
+                "if [ -x /usr/local/bin/jack-wait-ready.sh ]; then "
+                "/usr/local/bin/jack-wait-ready.sh --timeout 30; "
+                "else "
+                "for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1; "
+                "fi"
+            )
+            pre_jack = f"ExecStartPre=/usr/bin/env bash -lc \"{pre_jack_cmd}\"\n"
             # Encoder wait: prefer dedicated helper if installed; else fallback to inline grep loop (soft)
             enc_wait = "/usr/local/bin/encoder-wait-ready.sh"
             has_enc_wait = os.path.isfile(enc_wait) and os.access(enc_wait, os.X_OK)
+            # Respect user preference for active encoder if set
+            enc_name = (self._active_encoder_preference() or '').strip().lower()
+            if enc_name in ("liquidsoap","darkice","butt","glasscoder"):
+                enc_regex = enc_name
+            else:
+                enc_regex = "liquidsoap|darkice|butt|glasscoder"
             if has_enc_wait:
                 pre_enc = f"ExecStartPre={enc_wait} --timeout 30\n"
             else:
                 pre_enc = (
                     "ExecStartPre=/bin/bash -lc 'for i in $(seq 1 60); do "
-                    "jack_lsp -p 2>/dev/null | grep -qiE \"^(liquidsoap|darkice|butt|glasscoder)[:]\" && exit 0; "
+                    f"jack_lsp -p 2>/dev/null | grep -qiE \"^({enc_regex})[:]\" && exit 0; "
                     "sleep 0.5; done; echo \"[rdx] encoder not detected within 30s (continuing)\" >&2; exit 0'\n"
                 )
             unit = f"""[Unit]
@@ -5414,6 +5500,22 @@ WantedBy=default.target
         except Exception:
             # Non-fatal; Service Control will still allow manual start attempts
             pass
+
+    def _active_encoder_preference(self) -> str:
+        """Read user's preferred active encoder from settings.json.
+        Returns one of: 'liquidsoap','darkice','butt','glasscoder' or ''.
+        """
+        try:
+            sp = Path.home() / ".config" / "rdx" / "settings.json"
+            if sp.exists():
+                with open(sp, 'r') as f:
+                    data = json.load(f)
+                val = str(data.get('active_encoder', '')).lower()
+                if val in ("liquidsoap","darkice","butt","glasscoder"):
+                    return val
+        except Exception:
+            pass
+        return ""
 
         # ---- Liquidsoap user-service helper (systemd user unit) ----
     def _ensure_liquidsoap_unit(self, liq_bin: str, config_file: Path):
@@ -5442,19 +5544,17 @@ WantedBy=default.target
             # Where to append stdout/stderr as a safety-net for visibility
             log_path = str(Path.home() / ".config" / "rdx" / "liquidsoap.log")
 
-            # Build ExecStartPre chain:
-            # 1) Ensure config dir and log file exist (so GUI tailer has a file even on early failure)
-            # 2) Wait for JACK to be ready. Use helper if present; otherwise inline bash loop as a fallback.
-            pre_lines = []
-            pre_lines.append(f"ExecStartPre=/usr/bin/env bash -lc \"mkdir -p {shlex.quote(str(cfg_dir))} && touch {shlex.quote(log_path)}\"")
-            if has_jack_wait:
-                pre_lines.append(f"ExecStartPre=/usr/bin/env bash -lc \"{jack_wait} --timeout 30\"")
-            else:
-                # Inline fallback: wait up to 30s for jack_lsp and at least one port
-                pre_lines.append(
-                    "ExecStartPre=/usr/bin/env bash -lc \"for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1\""
-                )
-            pre = "\n".join(pre_lines) + "\n"
+            # Build ExecStartPre with robust fallback: try helper if present, else inline loop
+            pre_cmd = (
+                f"mkdir -p {shlex.quote(str(cfg_dir))} && "
+                f"touch {shlex.quote(log_path)} && "
+                "if [ -x /usr/local/bin/jack-wait-ready.sh ]; then "
+                "/usr/local/bin/jack-wait-ready.sh --timeout 30; "
+                "else "
+                "for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1; "
+                "fi"
+            )
+            pre = f"ExecStartPre=/usr/bin/env bash -lc \"{pre_cmd}\"\n"
             unit = f"""[Unit]
 Description=RDX Liquidsoap (per-user)
 After=default.target
@@ -5814,19 +5914,40 @@ class StereoToolManagerTab(QWidget):
                 except Exception:
                     pass
             os.symlink(str(target), str(link))
-            # Ensure the per-user unit is created/updated
-            try:
-                # Reuse helper from ServiceControlTab if available
-                parent = self.parent()
-                while parent and not isinstance(parent, ServiceControlTab):
-                    parent = parent.parent()
-                # Even if not found, we can write the unit here too
-            except Exception:
-                pass
-            # Write unit file
+            # Write unit file (with readiness gates consistent with Service Control)
             unit_dir = Path.home() / ".config" / "systemd" / "user"
             unit_dir.mkdir(parents=True, exist_ok=True)
             unit_path = unit_dir / "rdx-stereotool-active.service"
+            # JACK readiness gate
+            pre_jack_cmd = (
+                "if [ -x /usr/local/bin/jack-wait-ready.sh ]; then "
+                "/usr/local/bin/jack-wait-ready.sh --timeout 30; "
+                "else "
+                "for i in {1..60}; do jack_lsp >/dev/null 2>&1 && jack_lsp -p 2>/dev/null | grep -q . && exit 0; sleep 0.5; done; echo 'JACK not ready after 30s' >&2; exit 1; "
+                "fi"
+            )
+            pre_jack = f"ExecStartPre=/usr/bin/env bash -lc \"{pre_jack_cmd}\"\n"
+            # Encoder readiness (soft wait)
+            if os.path.isfile("/usr/local/bin/encoder-wait-ready.sh") and os.access("/usr/local/bin/encoder-wait-ready.sh", os.X_OK):
+                pre_enc = "ExecStartPre=/usr/local/bin/encoder-wait-ready.sh --timeout 30\n"
+            else:
+                # Respect active encoder setting if present
+                try:
+                    sp = Path.home() / ".config" / "rdx" / "settings.json"
+                    enc_regex = "liquidsoap|darkice|butt|glasscoder"
+                    if sp.exists():
+                        with open(sp, 'r') as f:
+                            data = json.load(f)
+                        val = str(data.get('active_encoder','')).lower()
+                        if val in ("liquidsoap","darkice","butt","glasscoder"):
+                            enc_regex = val
+                except Exception:
+                    enc_regex = "liquidsoap|darkice|butt|glasscoder"
+                pre_enc = (
+                    "ExecStartPre=/bin/bash -lc 'for i in $(seq 1 60); do "
+                    f"jack_lsp -p 2>/dev/null | grep -qiE \"^({enc_regex})[:]\" && exit 0; "
+                    "sleep 0.5; done; echo \"[rdx] encoder not detected within 30s (continuing)\" >&2; exit 0'\n"
+                )
             unit = f"""[Unit]
 Description=RDX Stereo Tool (active instance)
 After=default.target
@@ -5834,7 +5955,7 @@ Wants=default.target
 
 [Service]
 Type=simple
-ExecStart={str(link)}
+{pre_jack}{pre_enc}ExecStart={str(link)}
 Restart=on-failure
 RestartSec=2
 
@@ -5855,13 +5976,13 @@ WantedBy=default.target
             unit_path = Path.home() / ".config" / "systemd" / "user" / "rdx-stereotool-active.service"
             if not unit_path.exists():
                 self.activate(idx)
-            subprocess.run(["systemctl", "--user", "start", "rdx-stereotool-active"], check=False)
+            subprocess.run(["systemctl", "--user", "start", "rdx-stereotool-active", "--no-block"], check=False)
         except Exception as e:
             QMessageBox.critical(self, "Start Error", f"Failed to start: {e}")
 
     def stop(self, idx: int):
         try:
-            subprocess.run(["systemctl", "--user", "stop", "rdx-stereotool-active"], check=False)
+            subprocess.run(["systemctl", "--user", "stop", "rdx-stereotool-active", "--no-block"], check=False)
         except Exception as e:
             QMessageBox.critical(self, "Stop Error", f"Failed to stop: {e}")
 
@@ -5932,7 +6053,7 @@ class SettingsTab(QWidget):
         gl.addWidget(btn_stop, 2, 2)
         layout.addWidget(auto_group)
 
-        # Launch Order & Timing
+    # Launch Order & Timing
         order_group = QGroupBox("🚦 Launch Order & Timing")
         ol = QVBoxLayout(order_group)
         from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem
@@ -5952,18 +6073,41 @@ class SettingsTab(QWidget):
         ol.addLayout(btn_row)
         layout.addWidget(order_group)
 
-        # Populate table from settings or defaults
-        self._init_launch_order_ui()
+        # Encoders preferences
+        enc_group = QGroupBox("🎚️ Encoders")
+        egl = QHBoxLayout(enc_group)
+        from PyQt5.QtWidgets import QComboBox
+        egl.addWidget(QLabel("Active encoder:"))
+        self.encoder_combo = QComboBox()
+        self.encoder_combo.addItems(["liquidsoap", "darkice", "butt", "glasscoder"]) 
+        # Load saved preference
+        try:
+            val = str(self.main._settings.get('active_encoder', 'liquidsoap'))
+        except Exception:
+            val = 'liquidsoap'
+        idx = max(0, self.encoder_combo.findText(val))
+        self.encoder_combo.setCurrentIndex(idx)
+        self.encoder_combo.currentTextChanged.connect(self._save_active_encoder)
+        egl.addWidget(self.encoder_combo)
+        egl.addStretch(1)
+        layout.addWidget(enc_group)
+
+    # Populate table from settings or defaults
+    self._init_launch_order_ui()
 
         def do_up():
             r = self.order_table.currentRow()
             if r > 0:
-                self._swap_order_rows(r, r-1)
+                order, delays = self._current_launch_order()
+                order[r-1], order[r] = order[r], order[r-1]
+                self._rebuild_order_table(order, delays)
                 self.order_table.selectRow(r-1)
         def do_down():
             r = self.order_table.currentRow()
             if r >= 0 and r < self.order_table.rowCount()-1:
-                self._swap_order_rows(r, r+1)
+                order, delays = self._current_launch_order()
+                order[r+1], order[r] = order[r], order[r+1]
+                self._rebuild_order_table(order, delays)
                 self.order_table.selectRow(r+1)
         def do_save():
             self._save_launch_order()
@@ -6087,53 +6231,75 @@ WantedBy=default.target
         # ---- Launch order helpers ----
     def _init_launch_order_ui(self):
         try:
-            # Default order
-            order = ['jack', 'stereo_tool', 'liquidsoap', 'icecast']
-            delays = {k: 2 for k in order}
+            # Default order and delays, then merge saved settings
+            default_order = ['jack', 'stereo_tool', 'liquidsoap', 'icecast']
+            delays = {k: 2 for k in default_order}
+            order = list(default_order)
+            services_map = self._services_map()
             if hasattr(self.main, '_settings'):
                 saved_order = self.main._settings.get('service_launch_order')
                 saved_delays = self.main._settings.get('service_delays')
-                if isinstance(saved_order, list) and all(k in self.services for k in saved_order):
-                    order = saved_order
+                if isinstance(saved_order, list):
+                    # keep only known services, preserve order
+                    order = [k for k in saved_order if k in services_map]
+                    # append any missing known services
+                    for k in default_order:
+                        if k not in order and k in services_map:
+                            order.append(k)
                 if isinstance(saved_delays, dict):
-                    for k,v in saved_delays.items():
+                    for k, v in saved_delays.items():
                         try:
                             delays[k] = int(v)
                         except Exception:
                             pass
-            from PyQt5.QtWidgets import QSpinBox
-            self.order_table.setRowCount(0)
-            for key in order:
-                info = self.services.get(key)
-                if not info: continue
-                r = self.order_table.rowCount(); self.order_table.insertRow(r)
-                self.order_table.setItem(r, 0, QTableWidgetItem(info['name']))
-                spin = QSpinBox(); spin.setRange(0, 60); spin.setValue(int(delays.get(key, 2)))
-                spin.setProperty('service_key', key)
-                self.order_table.setCellWidget(r, 1, spin)
-                # Actions cell: show systemd unit for clarity
-                unit = info.get('systemd') or ''
-                self.order_table.setItem(r, 2, QTableWidgetItem(unit))
+            self._rebuild_order_table(order, delays)
         except Exception:
             pass
 
-    def _swap_order_rows(self, a: int, b: int):
-        try:
-            for col in (0,1,2):
-                if col == 1:
-                    wa = self.order_table.cellWidget(a, col)
-                    wb = self.order_table.cellWidget(b, col)
-                    self.order_table.removeCellWidget(a, col)
-                    self.order_table.removeCellWidget(b, col)
-                    self.order_table.setCellWidget(a, col, wb)
-                    self.order_table.setCellWidget(b, col, wa)
-                else:
-                    ia = self.order_table.takeItem(a, col)
-                    ib = self.order_table.takeItem(b, col)
-                    self.order_table.setItem(a, col, ib)
-                    self.order_table.setItem(b, col, ia)
-        except Exception:
-            pass
+    def _services_map(self):
+        services = getattr(self.main, 'service_control', None)
+        return services.services if services else {}
+
+    def _rebuild_order_table(self, order, delays):
+        from PyQt5.QtWidgets import QSpinBox
+        services_map = self._services_map()
+        self.order_table.setRowCount(0)
+        for key in order:
+            info = services_map.get(key)
+            if not info:
+                continue
+            r = self.order_table.rowCount(); self.order_table.insertRow(r)
+            self.order_table.setItem(r, 0, QTableWidgetItem(info['name']))
+            spin = QSpinBox(); spin.setRange(0, 60); spin.setValue(int(delays.get(key, 2)))
+            spin.setProperty('service_key', key)
+            self.order_table.setCellWidget(r, 1, spin)
+            unit = info.get('systemd') or ''
+            self.order_table.setItem(r, 2, QTableWidgetItem(unit))
+
+    def _current_launch_order(self):
+        # Read current table into an order list and delays mapping
+        order = []
+        delays = {}
+        services_map = self._services_map()
+        from PyQt5.QtWidgets import QSpinBox
+        for r in range(self.order_table.rowCount()):
+            name_item = self.order_table.item(r, 0)
+            spin = self.order_table.cellWidget(r, 1)
+            if not name_item:
+                continue
+            # Map display name back to key
+            key = None
+            for k, info in services_map.items():
+                if info['name'] == name_item.text():
+                    key = k; break
+            if not key:
+                continue
+            order.append(key)
+            if isinstance(spin, QSpinBox):
+                delays[key] = int(spin.value())
+        return order, delays
+
+    # _swap_order_rows removed in favor of robust rebuild-based swapping
 
     def _save_launch_order(self):
         try:
@@ -6145,7 +6311,9 @@ WantedBy=default.target
                 spin = self.order_table.cellWidget(r,1)
                 # Map display name back to key
                 key = None
-                for k, info in self.services.items():
+                services = getattr(self.main, 'service_control', None)
+                services_map = services.services if services else {}
+                for k, info in services_map.items():
                     if info['name'] == name_item.text():
                         key = k; break
                 if key is None: continue
@@ -6159,6 +6327,18 @@ WantedBy=default.target
             QMessageBox.information(self, "Saved", "Launch order and delays saved.")
         except Exception as e:
             QMessageBox.warning(self, "Save Failed", f"Could not save order: {e}")
+
+    def _save_active_encoder(self, text: str):
+        try:
+            self.main._settings['active_encoder'] = text
+            self.main.save_settings()
+            # Optional: refresh Stereo Tool unit so encoder-wait prefers the selected encoder
+            try:
+                self.main.service_control._ensure_stereotool_unit()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _start_services_in_order(self):
         try:
@@ -6204,7 +6384,7 @@ class RDXBroadcastControlCenter(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.8")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.15")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6246,9 +6426,10 @@ class RDXBroadcastControlCenter(QMainWindow):
         self.icecast_management = IcecastManagementTab()
         self.tab_widget.addTab(self.icecast_management, "📡 Icecast Management")
         
-        # Add remaining tabs
-        self.jack_matrix = JackMatrixTab(self)
-        self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
+    # Add remaining tabs
+    # Hide the legacy Patchboard tab (kept in code for future use)
+    # self.jack_matrix = JackMatrixTab(self)
+    # self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
 
         # Visual Graph (preview)
         try:
@@ -6272,7 +6453,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.8")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.15")
 
         # ---- System tray ----
     def _setup_tray(self):

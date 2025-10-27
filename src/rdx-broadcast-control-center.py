@@ -3649,7 +3649,7 @@ class ServiceControlTab(QWidget):
         
         layout.addWidget(master_group)
 
-    # Optional tools row
+        # Optional tools row
         tools_row = QHBoxLayout()
         deps_btn = QPushButton("Install Dependencies…")
         deps_btn.setToolTip("Install core services (JACK, Icecast, VLC) and audio permissions")
@@ -3658,7 +3658,7 @@ class ServiceControlTab(QWidget):
         tools_row.addStretch(1)
         layout.addLayout(tools_row)
 
-    # Removed the static "Service Dependencies" info block to give the log/status area more room
+        # Removed the static "Service Dependencies" info block to give the log/status area more room
         
         # Liquidsoap Log Viewer
         log_group = QGroupBox("📄 Liquidsoap Log (latest 500 lines)")
@@ -3707,7 +3707,7 @@ class ServiceControlTab(QWidget):
         # After UI is shown, optionally prompt to install missing core dependencies on fresh systems
         QTimer.singleShot(400, self.maybe_prompt_install_core_deps)
 
-    # ---- Core dependency checks and installer prompt --------------------
+        # ---- Core dependency checks and installer prompt --------------------
     def _missing_core_deps(self) -> list:
         """Return a list of missing core tools that impact first-run UX.
         We check presence of binaries as a proxy for packages.
@@ -6053,7 +6053,7 @@ class SettingsTab(QWidget):
         gl.addWidget(btn_stop, 2, 2)
         layout.addWidget(auto_group)
 
-    # Launch Order & Timing
+        # Launch Order & Timing
         order_group = QGroupBox("🚦 Launch Order & Timing")
         ol = QVBoxLayout(order_group)
         from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem
@@ -6092,8 +6092,8 @@ class SettingsTab(QWidget):
         egl.addStretch(1)
         layout.addWidget(enc_group)
 
-    # Populate table from settings or defaults
-    self._init_launch_order_ui()
+        # Populate table from settings or defaults
+        self._init_launch_order_ui()
 
         def do_up():
             r = self.order_table.currentRow()
@@ -6299,7 +6299,7 @@ WantedBy=default.target
                 delays[key] = int(spin.value())
         return order, delays
 
-    # _swap_order_rows removed in favor of robust rebuild-based swapping
+        # _swap_order_rows removed in favor of robust rebuild-based swapping
 
     def _save_launch_order(self):
         try:
@@ -6426,10 +6426,10 @@ class RDXBroadcastControlCenter(QMainWindow):
         self.icecast_management = IcecastManagementTab()
         self.tab_widget.addTab(self.icecast_management, "📡 Icecast Management")
         
-    # Add remaining tabs
-    # Hide the legacy Patchboard tab (kept in code for future use)
-    # self.jack_matrix = JackMatrixTab(self)
-    # self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
+        # Add remaining tabs
+        # Hide the legacy Patchboard tab (kept in code for future use)
+        # self.jack_matrix = JackMatrixTab(self)
+        # self.tab_widget.addTab(self.jack_matrix, "🔌 JACK Patchboard")
 
         # Visual Graph (preview)
         try:
