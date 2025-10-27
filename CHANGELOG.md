@@ -1,3 +1,11 @@
+## v3.7.16 (2025-10-26)
+### Defaults
+- JACK management: Default is now OFF (unchecked). Rivendell typically manages JACK more reliably; enable RDX management only if desired.
+- When enabled, defaults use `jackd` with the `dummy` backend and `1024` frames/period. These are the starting values for fresh setups and when no prior JACK settings are saved.
+
+### Notes
+- No behavioral change for existing configs; saved `~/.config/rdx/jack_settings.json` continues to take precedence.
+
 ## v3.7.15 (2025-10-26)
 ### Fixed
 - Settings: Moving services up/down in Launch Order & Timing could crash due to in-place row swaps. Now uses a safe rebuild of the table based on the current order and delays.

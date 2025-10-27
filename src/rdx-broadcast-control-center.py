@@ -3807,12 +3807,12 @@ class ServiceControlTab(QWidget):
 
     def _load_jack_settings(self) -> dict:
         d = {
-            "manage": True,            # Whether RDX should manage JACK server
+            "manage": False,           # Default: OFF — let Rivendell manage JACK unless enabled here
             "mode": "jackd",          # jackd | jackdbus
-            "backend": "alsa",        # alsa | dummy
+            "backend": "dummy",       # Default backend when enabled: dummy
             "device": "",             # e.g., hw:PCH or hw:0
             "rate": 48000,             # Sample rate
-            "period": 256,             # Frames/period (-p)
+            "period": 1024,            # Frames/period (-p)
             "nperiods": 2,             # Periods/buffer (-n)
             "realtime": True,          # Use -R for realtime
             "extra_args": ""          # Extra args for jackd driver
@@ -4123,7 +4123,7 @@ class ServiceControlTab(QWidget):
             return ""
 
     def _apply_jack_manage_mode_to_controls(self):
-        manage = self.jack_settings.get("manage", True)
+        manage = self.jack_settings.get("manage", False)
         # If not managing, disable start/stop/restart for JACK
         for btn in (getattr(self, 'jack_start_btn', None), getattr(self, 'jack_stop_btn', None), getattr(self, 'jack_restart_btn', None)):
             if btn is not None:
@@ -4437,7 +4437,7 @@ WantedBy=default.target
         try:
             if service_key == 'jack':
                 # Respect management mode; if disabled, inform user
-                if not self.jack_settings.get("manage", True):
+                if not self.jack_settings.get("manage", False):
                     QMessageBox.information(self, "JACK Managed Externally",
                                             "RDX is set to not manage the JACK server.\n\n"
                                             "Enable management in the JACK Settings (Configure) if you want RDX to start it.")
@@ -4646,7 +4646,7 @@ WantedBy=default.target
         
         try:
             if service_key == 'jack':
-                if not self.jack_settings.get("manage", True):
+                if not self.jack_settings.get("manage", False):
                     QMessageBox.information(self, "JACK Managed Externally",
                                             "RDX is set to not manage the JACK server, so it won't stop it.")
                     return
@@ -4687,7 +4687,7 @@ WantedBy=default.target
         service_info = self.services[service_key]
         try:
             if service_key == 'jack':
-                if not self.jack_settings.get("manage", True):
+                if not self.jack_settings.get("manage", False):
                     QMessageBox.information(self, "JACK Managed Externally",
                                             "RDX is set to not manage the JACK server.")
                     return
@@ -5180,8 +5180,8 @@ verify
         form = QFormLayout(dlg)
 
         # Manage toggle
-        manage_cb = QCheckBox("Let RDX manage the JACK server")
-        manage_cb.setChecked(self.jack_settings.get("manage", True))
+    manage_cb = QCheckBox("Let RDX manage the JACK server")
+    manage_cb.setChecked(self.jack_settings.get("manage", False))
         form.addRow("Management:", manage_cb)
 
         # Autostart toggle
@@ -5367,7 +5367,7 @@ verify
             try:
                 # JACK
                 jack_ok = subprocess.run(["jack_lsp"], capture_output=True, timeout=0.7).returncode == 0
-                if not jack_ok and self.jack_settings.get("manage", True):
+                if not jack_ok and self.jack_settings.get("manage", False):
                     self.start_service('jack')
                     time.sleep(1)
 
