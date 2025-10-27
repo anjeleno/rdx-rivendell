@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RDX Professional Broadcast Control Center v3.7.16
+RDX Professional Broadcast Control Center v4.0.0
 Complete GUI control for streaming, icecast, JACK, and service management
 """
 
@@ -6132,6 +6132,20 @@ class SettingsTab(QWidget):
         hl.addWidget(btn_hide_now)
         layout.addWidget(tray_group)
 
+        # Backup & Restore
+        backup_group = QGroupBox("🧩 Backup & Restore")
+        bl = QHBoxLayout(backup_group)
+        btn_export = QPushButton("⬇️ Export Settings…")
+        btn_export.setToolTip("Export all RDX settings, JACK profiles, streams, and Stereo Tool presets/states (*.rc, *.sts) to a single .zip")
+        btn_export.clicked.connect(self.export_settings_bundle)
+        btn_import = QPushButton("⬆️ Import Settings…")
+        btn_import.setToolTip("Import a previously exported .zip and restore settings, including Stereo Tool presets/states (safety backup created first)")
+        btn_import.clicked.connect(self.import_settings_bundle)
+        bl.addWidget(btn_export)
+        bl.addWidget(btn_import)
+        bl.addStretch(1)
+        layout.addWidget(backup_group)
+
         # JACK Auto-Reconnect moved to Graph tab (per user request)
 
         layout.addStretch(1)
@@ -6340,6 +6354,8 @@ WantedBy=default.target
         except Exception:
             pass
 
+    # (backup/restore helpers are defined below using zip bundles)
+
     def _start_services_in_order(self):
         try:
             # Build sequence
@@ -6378,13 +6394,226 @@ WantedBy=default.target
         except Exception:
             pass
 
+    # ---- Backup/Restore helpers ----
+    def _rdx_config_dir(self) -> Path:
+        p = Path.home() / ".config" / "rdx"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        return p
+
+    def _bundle_file_list(self) -> list:
+        base = self._rdx_config_dir()
+        # Relative paths inside ~/.config/rdx to include in export
+        rels = [
+            "settings.json",
+            "streams.json",
+            "radio.liq",
+            "jack_settings.json",
+            "jack_profiles.json",
+            "jack_protected.json",
+            "processing/stereotool/stereotool_instances.json",
+        ]
+        out = []
+        for r in rels:
+            try:
+                p = base / r
+                if p.exists():
+                    out.append((p, r))
+            except Exception:
+                pass
+        # Also include any Stereo Tool preset/state files (*.rc, *.sts) under processing/stereotool
+        try:
+            st_dir = base / "processing" / "stereotool"
+            if st_dir.exists():
+                for ext in ("*.rc", "*.sts"):
+                    for p in st_dir.rglob(ext):
+                        try:
+                            rel = str(p.relative_to(base))
+                            out.append((p, rel))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        return out
+
+    def export_settings_bundle(self):
+        try:
+            from PyQt5.QtWidgets import QFileDialog
+            import zipfile, datetime
+            cfg = self._rdx_config_dir()
+            ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            suggested = str(Path.home() / f"rdx-settings-{ts}.zip")
+            path, _ = QFileDialog.getSaveFileName(self, "Export RDX Settings", suggested, "RDX Settings (*.zip)")
+            if not path:
+                return
+            files = self._bundle_file_list()
+            with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED) as z:
+                # Write a small manifest
+                manifest = {
+                    "product": "rdx-broadcast-control-center",
+                    "version": str(getattr(self.main, 'windowTitle', lambda: '')() or '').strip(),
+                    "exported_at": ts,
+                    "base": "~/.config/rdx",
+                    "files": [rel for (_abs, rel) in files],
+                }
+                z.writestr("rdx-export.json", json.dumps(manifest, indent=2))
+                for abs_p, rel in files:
+                    try:
+                        z.write(str(abs_p), arcname=rel)
+                    except Exception:
+                        pass
+            QMessageBox.information(self, "Export Complete", f"Exported {len(files)} file(s) to:\n{path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Could not export settings: {e}")
+
+    def _safety_backup_current(self) -> Path:
+        import zipfile, datetime
+        cfg = self._rdx_config_dir()
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = cfg / f"backup-before-import-{ts}.zip"
+        files = self._bundle_file_list()
+        try:
+            with zipfile.ZipFile(str(backup_path), 'w', compression=zipfile.ZIP_DEFLATED) as z:
+                for abs_p, rel in files:
+                    try:
+                        z.write(str(abs_p), arcname=rel)
+                    except Exception:
+                        pass
+        except Exception:
+            # Non-fatal
+            return Path("")
+        return backup_path
+
+    def import_settings_bundle(self):
+        try:
+            from PyQt5.QtWidgets import QFileDialog
+            import zipfile, tempfile, shutil as _shutil
+            path, _ = QFileDialog.getOpenFileName(self, "Import RDX Settings", str(Path.home()), "RDX Settings (*.zip)")
+            if not path:
+                return
+            # Inspect archive
+            ok = False
+            try:
+                with zipfile.ZipFile(path, 'r') as z:
+                    names = set(z.namelist())
+                    # Accept if manifest exists or at least one known file is present
+                    known = {"settings.json","streams.json","radio.liq","jack_settings.json","jack_profiles.json","jack_protected.json","processing/stereotool/stereotool_instances.json"}
+                    has_st_files = any((n.startswith("processing/stereotool/") and (n.endswith(".rc") or n.endswith(".sts"))) for n in names)
+                    if "rdx-export.json" in names or any(n in names for n in known) or has_st_files:
+                        ok = True
+            except Exception:
+                ok = False
+            if not ok:
+                QMessageBox.warning(self, "Not a valid backup", "The selected file doesn't look like an RDX settings backup.")
+                return
+            # Confirm destructive operation
+            ret = QMessageBox.question(self, "Import Settings",
+                                       "This will overwrite existing RDX settings files (a safety backup is created first). Continue?",
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if ret != QMessageBox.Yes:
+                return
+            # Safety backup
+            backup_zip = self._safety_backup_current()
+            # Extract to temp and copy recognized files
+            cfg = self._rdx_config_dir()
+            tmpdir = Path(tempfile.mkdtemp(prefix="rdx-import-"))
+            try:
+                with zipfile.ZipFile(path, 'r') as z:
+                    z.extractall(str(tmpdir))
+                # Copy over only recognized files/paths
+                candidates = [
+                    "settings.json",
+                    "streams.json",
+                    "radio.liq",
+                    "jack_settings.json",
+                    "jack_profiles.json",
+                    "jack_protected.json",
+                    "processing/stereotool/stereotool_instances.json",
+                ]
+                # Static candidates
+                for rel in candidates:
+                    src = tmpdir / rel
+                    if src.exists():
+                        dst = cfg / rel
+                        try:
+                            dst.parent.mkdir(parents=True, exist_ok=True)
+                        except Exception:
+                            pass
+                        try:
+                            _shutil.copy2(str(src), str(dst))
+                        except Exception:
+                            pass
+                # Dynamic Stereo Tool presets/states (*.rc, *.sts)
+                st_tmp = tmpdir / "processing" / "stereotool"
+                if st_tmp.exists():
+                    for ext in ("*.rc", "*.sts"):
+                        for src in st_tmp.rglob(ext):
+                            try:
+                                rel = str(src.relative_to(tmpdir))
+                                dst = cfg / rel
+                                try:
+                                    dst.parent.mkdir(parents=True, exist_ok=True)
+                                except Exception:
+                                    pass
+                                try:
+                                    _shutil.copy2(str(src), str(dst))
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+            finally:
+                try:
+                    _shutil.rmtree(str(tmpdir), ignore_errors=True)
+                except Exception:
+                    pass
+            # Refresh in-memory settings and dependent UIs
+            try:
+                # Reload app settings
+                self.main._load_settings()
+                # Apply tray pref
+                self.chk_tray_on_close.setChecked(bool(self.main._settings.get('tray_minimize_on_close', False)))
+                # Rebuild launch order UI
+                self._init_launch_order_ui()
+                # Refresh encoder combo
+                val = str(self.main._settings.get('active_encoder', 'liquidsoap'))
+                idx = max(0, self.encoder_combo.findText(val))
+                self.encoder_combo.setCurrentIndex(idx)
+            except Exception:
+                pass
+            try:
+                # Reload JACK settings into Service Control and reapply manage mode
+                sc = getattr(self.main, 'service_control', None)
+                if sc is not None:
+                    sc.jack_settings = sc._load_jack_settings()
+                    sc._apply_jack_manage_mode_to_controls()
+                    sc.update_all_status()
+            except Exception:
+                pass
+            try:
+                # Refresh Stereo Tool manager instances list
+                stm = getattr(self.main, 'stereo_tool_manager', None)
+                if stm is not None:
+                    stm._load_instances(); stm._refresh_table()
+            except Exception:
+                pass
+            # Notify and hint restart for full effect
+            msg = "Settings import complete."
+            if backup_zip and str(backup_zip):
+                msg += f"\nA safety backup was saved to: {backup_zip}"
+            msg += "\n\nSome services may need a restart to pick up changes."
+            QMessageBox.information(self, "Import Complete", msg)
+        except Exception as e:
+            QMessageBox.critical(self, "Import Failed", f"Could not import settings: {e}")
+
 
 class RDXBroadcastControlCenter(QMainWindow):
     """Main application window with tabbed interface"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RDX Professional Broadcast Control Center v3.7.16")
+        self.setWindowTitle("RDX Professional Broadcast Control Center v4.0.0")
         self.setMinimumSize(1000, 700)
         # Tray/minimize settings
         self.tray_minimize_on_close = False
@@ -6453,7 +6682,7 @@ class RDXBroadcastControlCenter(QMainWindow):
         layout.addWidget(self.tab_widget)
         
         # Status bar
-        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v3.7.16")
+        self.statusBar().showMessage("Ready - Professional Broadcast Control Center v4.0.0")
 
         # ---- System tray ----
     def _setup_tray(self):
@@ -6535,7 +6764,7 @@ def main():
     
     # Set application properties
     app.setApplicationName("RDX Broadcast Control Center")
-    app.setApplicationVersion("3.4.14")
+    app.setApplicationVersion("4.0.0")
     
     # Create and show main window
     window = RDXBroadcastControlCenter()

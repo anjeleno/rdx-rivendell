@@ -1,3 +1,14 @@
+## v4.0.0 (2025-10-27)
+### Added
+- Settings → Backup & Restore: Export all RDX settings to a single .zip and import them later.
+  - Includes: ~/.config/rdx/settings.json, streams.json, radio.liq, jack_settings.json, jack_profiles.json, jack_protected.json, processing/stereotool/stereotool_instances.json, and any Stereo Tool presets/states under processing/stereotool matching *.rc and *.sts.
+  - Import creates a timestamped safety backup of current settings before overwriting and refreshes UI/state automatically.
+
+### Notes
+- Binaries are not included in the backup (e.g., Stereo Tool executables or Liquidsoap itself). The app will regenerate per-user systemd units after import as needed.
+- After import, some services may need a restart to pick up changes.
+- This is a non‑breaking UI addition. Defaults from 3.7.16 remain: JACK management off by default; when enabled it defaults to jackd + dummy + 1024 frames/period.
+
 ## v3.7.16 (2025-10-26)
 ### Defaults
 - JACK management: Default is now OFF (unchecked). Rivendell typically manages JACK more reliably; enable RDX management only if desired.
